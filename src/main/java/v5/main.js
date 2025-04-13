@@ -1,3 +1,178 @@
+// Функция для обработки адаптивности на мобильных устройствах
+function setupResponsiveLayout() {
+    // Решение проблемы с масштабированием на мобильных устройствах
+    document.addEventListener('touchmove', function(event) {
+        if (event.scale !== 1) {
+            event.preventDefault();
+        }
+    }, { passive: false });
+
+    // Функция для адаптации размера карт в зависимости от размера экрана
+    function adjustCardSize() {
+        const screenWidth = window.innerWidth;
+        const root = document.documentElement;
+
+        // Динамическое изменение размера карт в зависимости от ширины экрана
+        if (screenWidth < 400) {
+            root.style.setProperty('--card-width', '55px');
+            root.style.setProperty('--card-height', '80px');
+        } else if (screenWidth < 480) {
+            root.style.setProperty('--card-width', '60px');
+            root.style.setProperty('--card-height', '85px');
+        } else if (screenWidth < 768) {
+            root.style.setProperty('--card-width', '70px');
+            root.style.setProperty('--card-height', '100px');
+        } else if (screenWidth < 992) {
+            root.style.setProperty('--card-width', '80px');
+            root.style.setProperty('--card-height', '110px');
+        } else {
+            root.style.setProperty('--card-width', '90px');
+            root.style.setProperty('--card-height', '125px');
+        }
+    }
+
+    // Функция для фиксированного размера игрового стола
+    function maintainTableSize() {
+        const gameTable = document.querySelector('.game-table');
+        if (gameTable) {
+            // Убедимся, что у игрового стола всегда будет минимальная высота
+            const screenHeight = window.innerHeight;
+            const minHeight = Math.min(Math.max(220, screenHeight * 0.3), 300);
+            gameTable.style.minHeight = `${minHeight}px`;
+            gameTable.style.height = `${minHeight}px`;
+        }
+    }
+
+    // Для улучшения работы с кнопками на мобильных устройствах
+    function improveMobileButtons() {
+        const buttons = document.querySelectorAll('button');
+        if (window.innerWidth <= 768) {
+            buttons.forEach(button => {
+                // Увеличиваем размер нажимаемой области на мобильных устройствах
+                button.addEventListener('touchstart', function() {
+                    this.style.transform = 'scale(0.95)';
+                });
+
+                button.addEventListener('touchend', function() {
+                    this.style.transform = '';
+                });
+            });
+        }
+    }
+
+    // Функция для улучшения управления картами на мобильных устройствах
+    function improveMobileCardHandling() {
+        // Для решения проблемы с перекрытием карт на мобильных устройствах
+        const handAreas = document.querySelectorAll('.hand');
+
+        if (window.innerWidth <= 768) {
+            handAreas.forEach(handArea => {
+                const cards = handArea.querySelectorAll('.card');
+
+                // Карты на руке имеют небольшое перекрытие на мобильных устройствах для экономии места
+                cards.forEach((card, index) => {
+                    card.style.marginLeft = index > 0 ? '-10px' : '0';
+
+                    // Добавляем обработчик для выделения карты
+                    card.addEventListener('touchstart', function(e) {
+                        const allCards = handArea.querySelectorAll('.card');
+
+                        // Устанавливаем z-index для всех карт на основное значение
+                        allCards.forEach(c => {
+                            if (c !== this) {
+                                c.style.zIndex = "1";
+                            }
+                        });
+
+                        // Увеличиваем z-index для активной карты
+                        this.style.zIndex = "10";
+                    });
+                });
+            });
+        }
+    }
+
+    // Функция для проверки и установки мобильных стилей
+    function checkAndSetMobileStyles() {
+        const isMobile = window.innerWidth <= 768;
+        const gameSection = document.querySelector('.game-section');
+
+        if (gameSection) {
+            if (isMobile) {
+                gameSection.classList.add('mobile-view');
+            } else {
+                gameSection.classList.remove('mobile-view');
+            }
+        }
+
+        // Адаптируем размер карт и другие элементы
+        adjustCardSize();
+        maintainTableSize();
+        improveMobileButtons();
+        improveMobileCardHandling();
+    }
+
+    // Запуск при загрузке страницы
+    checkAndSetMobileStyles();
+
+    // Обработка изменения размера окна
+    window.addEventListener('resize', checkAndSetMobileStyles);
+
+    // Обработка изменения ориентации экрана на мобильных устройствах
+    window.addEventListener('orientationchange', checkAndSetMobileStyles);
+}
+
+// Добавление анимации для карт
+function addCardAnimations() {
+    // Анимация при добавлении новой карты
+    function animateNewCard(cardElement) {
+        cardElement.classList.add('card-deal-animation');
+        setTimeout(() => {
+            cardElement.classList.remove('card-deal-animation');
+        }, 300);
+    }
+
+    // Функция для наблюдения за изменениями в DOM для добавления анимаций
+    const observeCardAddition = () => {
+        const tableCards = document.getElementById('table-cards');
+        const playerCards = document.getElementById('player-cards');
+
+        if (tableCards && playerCards) {
+            // Наблюдаем за добавлением карт на стол
+            const tableObserver = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.addedNodes.length) {
+                        mutation.addedNodes.forEach((node) => {
+                            if (node.classList && node.classList.contains('card')) {
+                                animateNewCard(node);
+                            }
+                        });
+                    }
+                });
+            });
+
+            // Наблюдаем за добавлением карт в руку игрока
+            const playerObserver = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.addedNodes.length) {
+                        mutation.addedNodes.forEach((node) => {
+                            if (node.classList && node.classList.contains('card')) {
+                                animateNewCard(node);
+                            }
+                        });
+                    }
+                });
+            });
+
+            tableObserver.observe(tableCards, { childList: true });
+            playerObserver.observe(playerCards, { childList: true });
+        }
+    };
+
+    // Запускаем наблюдение после полной загрузки игры
+    setTimeout(observeCardAddition, 1000);
+}
+
 // Initialize the game
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
