@@ -108,6 +108,15 @@ class GameClient {
             }
         });
 
+        // Обработка начала нового раунда
+        this.socket.on('new-round-started', (gameState) => {
+            this.gameState = gameState;
+
+            if (typeof this.onNewRoundStarted === 'function') {
+                this.onNewRoundStarted(gameState);
+            }
+        });
+
         // Обработка ошибок
         this.socket.on('error', (error) => {
             if (typeof this.onError === 'function') {
@@ -132,6 +141,15 @@ class GameClient {
             handCard,
             tableCards
         });
+    }
+
+    // Новый метод для начала нового раунда
+    startNewRound() {
+        if (this.roomId) {
+            this.socket.emit('start-new-round', this.roomId);
+        } else {
+            console.error('Невозможно начать новый раунд без активной комнаты');
+        }
     }
 
     // Методы для сохранения и восстановления сессии

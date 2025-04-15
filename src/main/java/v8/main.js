@@ -298,7 +298,11 @@ let gameState = {
 	lastTakenBy: null, // Имя игрока, который взял последние карты
 	isOnlineGame: false, // Флаг, указывающий на то, что игра онлайн
 	roomId: null, // ID комнаты для онлайн-игры
-	playerIndex: null // Индекс текущего игрока в онлайн-игре
+	playerIndex: null, // Индекс текущего игрока в онлайн-игре
+	// Добавляем новые поля для поддержки игры до 21 очка
+	totalScores: [0, 0], // Общий счет [игрок, компьютер]
+	targetScore: 21, // Целевое количество очков для победы
+	roundNumber: 1 // Номер текущего раунда
 };
 
 // DOM Elements
@@ -406,37 +410,37 @@ function handleRoomJoined(data) {
 }
 
 function handleGameStart(newGameState) {
-    console.log("Получено событие game-start", newGameState);
+	console.log("Получено событие game-start", newGameState);
 
-    // Обновляем локальное состояние игры
-    updateGameStateFromServer(newGameState);
+	// Обновляем локальное состояние игры
+	updateGameStateFromServer(newGameState);
 
-    // Важная проверка - если мы уже на игровом поле, не выполняем повторную инициализацию
-    if (gameSections.gameBoard && !gameSections.gameBoard.classList.contains('hidden')) {
-        console.log("Мы уже на игровом поле, обновляем только состояние");
-        renderGameState();
-        updateActivePlayerUI();
-        return;
-    }
+	// Важная проверка - если мы уже на игровом поле, не выполняем повторную инициализацию
+	if (gameSections.gameBoard && !gameSections.gameBoard.classList.contains('hidden')) {
+		console.log("Мы уже на игровом поле, обновляем только состояние");
+		renderGameState();
+		updateActivePlayerUI();
+		return;
+	}
 
-    // Скрываем экран настройки и показываем игровое поле
-    showSection(gameSections.gameBoard);
+	// Скрываем экран настройки и показываем игровое поле
+	showSection(gameSections.gameBoard);
 
-    // Обновляем имена игроков
-    updatePlayerNames();
+	// Обновляем имена игроков
+	updatePlayerNames();
 
-    // Инициализируем UI
-    renderGameState();
+	// Инициализируем UI
+	renderGameState();
 
-    // Инициализация игрового процесса
-    updateActivePlayerUI();
+	// Инициализация игрового процесса
+	updateActivePlayerUI();
 
-    // Скрываем информацию о комнате, если она отображается
-    if (elements.roomInfo) {
-        elements.roomInfo.classList.add('hidden');
-    }
+	// Скрываем информацию о комнате, если она отображается
+	if (elements.roomInfo) {
+		elements.roomInfo.classList.add('hidden');
+	}
 
-    showNotification('Игра началась!', 'success');
+	showNotification('Игра началась!', 'success');
 }
 
 function handleGameUpdate(newGameState) {
@@ -573,6 +577,69 @@ function renderGameState() {
 	// Обновляем информацию о последней взятке, если есть
 	if (gameState.lastTakenCards.length > 0) {
 		updateLastTakenInfo();
+	}
+
+	// Обновляем информацию о раунде и общем счете
+	updateRoundAndScoreInfo();
+}
+
+// Новая функция для отображения информации о раунде и счете
+function updateRoundAndScoreInfo() {
+	// Проверяем, существует ли элемент для отображения раунда
+	let roundIndicator = document.querySelector('.round-indicator');
+	if (!roundIndicator) {
+		// Если элемента нет, создаем его
+		roundIndicator = document.createElement('div');
+		roundIndicator.className = 'round-indicator';
+
+		// Добавляем его в игровой стол
+		const gameTable = document.querySelector('.game-table');
+		if (gameTable) {
+			gameTable.appendChild(roundIndicator);
+		}
+	}
+
+	// Обновляем текст индикатора раунда
+	roundIndicator.textContent = `Раунд ${gameState.roundNumber}`;
+
+	// Проверяем, существует ли элемент для отображения счета
+	let scoreDisplay = document.querySelector('.game-score-display');
+	if (!scoreDisplay) {
+		// Если элемента нет, создаем его
+		scoreDisplay = document.createElement('div');
+		scoreDisplay.className = 'game-score-display';
+
+		// Создаем структуру для отображения счета
+		scoreDisplay.innerHTML = `
+            <div class="score-title">Общий счёт:</div>
+            <div class="score-value">
+                <span>Вы: <strong id="player-total-score-display">0</strong></span>
+                <span>Компьютер: <strong id="opponent-total-score-display">0</strong></span>
+            </div>
+        `;
+
+		// Добавляем его в игровой стол
+		const gameTable = document.querySelector('.game-table');
+		if (gameTable) {
+			gameTable.appendChild(scoreDisplay);
+		}
+	}
+
+	// Обновляем значения общего счета
+	const playerScoreElement = document.getElementById('player-total-score-display');
+	const opponentScoreElement = document.getElementById('opponent-total-score-display');
+
+	if (playerScoreElement && opponentScoreElement) {
+		if (gameState.isOnlineGame) {
+			const myPlayerIndex = gameState.playerIndex;
+			const opponentIndex = myPlayerIndex === 0 ? 1 : 0;
+
+			playerScoreElement.textContent = gameState.totalScores[myPlayerIndex];
+			opponentScoreElement.textContent = gameState.totalScores[opponentIndex];
+		} else {
+			playerScoreElement.textContent = gameState.totalScores[0];
+			opponentScoreElement.textContent = gameState.totalScores[1];
+		}
 	}
 }
 
@@ -1126,6 +1193,7 @@ function nextTurn() {
 	}
 }
 
+// Улучшенная функция для хода компьютера, с приоритетами выбора карт
 function computerMove() {
 	console.log("Ход компьютера");
 	const computer = gameState.players[1];
@@ -1147,87 +1215,113 @@ function computerMove() {
 		return;
 	}
 
-	// Сначала попытаться взять карты
+	// Флаг, указывающий на то, что ход сделан
 	let madeMove = false;
 
 	try {
-		// Перебираем все карты в руке компьютера
-		for (const handCard of computer.hand) {
-			// Сначала проверить специальные карты
-			if (handCard.value === 'J') {
-				// Найти все не-Q, не-K карты
-				const validCards = gameState.tableCards.filter(card => !['Q', 'K'].includes(card.value));
-				if (validCards.length > 0) {
-					takeCards(computer, handCard, validCards);
-					madeMove = true;
-					break;
-				}
-			} else if (handCard.value === 'Q') {
-				// Найти другую Q
-				const queens = gameState.tableCards.filter(card => card.value === 'Q');
-				if (queens.length > 0) {
-					takeCards(computer, handCard, [queens[0]]);
-					madeMove = true;
-					break;
-				}
-			} else if (handCard.value === 'K') {
-				// Найти другого K
-				const kings = gameState.tableCards.filter(card => card.value === 'K');
-				if (kings.length > 0) {
-					takeCards(computer, handCard, [kings[0]]);
-					madeMove = true;
-					break;
-				}
-			} else {
-				// Попытаться найти комбинации, сумма которых равна 11
-				// Туз не должен забирать даму или короля
-				for (let i = 1; i <= gameState.tableCards.length; i++) {
-					const combinations = getCombinations(gameState.tableCards, i);
-					for (const combo of combinations) {
-						// Проверка, что туз не пытается забрать даму или короля
-						if (handCard.value === 'A' && combo.some(card => ['K', 'Q'].includes(card.value))) {
-							continue;
-						}
+		// 1. Проверка наличия счастливых карт на столе (двойка крести и десятка бубны)
+		const luckyCards = gameState.tableCards.filter(card =>
+			(card.suit === 'clubs' && card.value === '2') ||
+			(card.suit === 'diamonds' && card.value === '10')
+		);
 
-						const sum = combo.reduce((acc, card) => acc + card.numericValue, 0);
-						if (sum + handCard.numericValue === 11) {
-							takeCards(computer, handCard, combo);
-							madeMove = true;
-							break;
-						}
+		if (luckyCards.length > 0) {
+			console.log("На столе есть счастливые карты, пытаемся взять их");
+
+			// Перебираем карты в руке компьютера
+			for (const handCard of computer.hand) {
+				for (const luckyCard of luckyCards) {
+					// Проверяем возможность взять счастливую карту
+					const otherCards = findCardsToComplete(handCard, [luckyCard], gameState.tableCards);
+
+					if (otherCards.length > 0) {
+						// Можем взять счастливую карту вместе с другими
+						takeCards(computer, handCard, [luckyCard, ...otherCards]);
+						madeMove = true;
+						break;
+					} else if (canTakeCards(handCard, [luckyCard])) {
+						// Можем взять только счастливую карту
+						takeCards(computer, handCard, [luckyCard]);
+						madeMove = true;
+						break;
 					}
-					if (madeMove) break;
 				}
+				if (madeMove) break;
 			}
-
-			if (madeMove) break;
 		}
 
-		// Если не может взять, сбросить
+		// 2. Если не взяли счастливые карты, пытаемся эффективно использовать валета
 		if (!madeMove) {
-			// Проверяем, что есть хотя бы одна карта для сброса
-			if (computer.hand.length === 0) {
-				console.error("У компьютера нет карт для сброса!");
-				gameState.currentPlayerIndex = 0; // Переключаем на игрока
-				updateActivePlayerUI();
-				return;
-			}
+			const jacks = computer.hand.filter(card => card.value === 'J');
+			if (jacks.length > 0) {
+				console.log("У компьютера есть валет, проверяем возможность взять несколько карт");
 
-			// Выбрать случайную карту для сброса
-			const randomIndex = Math.floor(Math.random() * computer.hand.length);
-			const cardToDiscard = computer.hand[randomIndex];
+				// Найти все карты, которые может взять валет
+				const validCards = gameState.tableCards.filter(card => !['Q', 'K'].includes(card.value));
 
-			if (!cardToDiscard) {
-				console.error("Не удалось выбрать карту для сброса!");
-				gameState.currentPlayerIndex = 0; // Переключаем на игрока
-				updateActivePlayerUI();
-				return;
+				if (validCards.length > 1) {
+					// Если валет может взять несколько карт, используем его
+					takeCards(computer, jacks[0], validCards);
+					madeMove = true;
+				} else if (validCards.length === 1) {
+					// Если валет может взять только одну карту, проверяем,
+					// есть ли другие возможности для взятия
+					const otherOptions = computer.hand.filter(card => card.value !== 'J').some(card =>
+						canTakeAnyCards(card, gameState.tableCards)
+					);
+
+					if (!otherOptions) {
+						// Если других возможностей нет, используем валета
+						takeCards(computer, jacks[0], validCards);
+						madeMove = true;
+					}
+				}
 			}
+		}
+
+		// 3. Стандартная логика для других карт
+		if (!madeMove) {
+			// Сначала проверяем, может ли компьютер взять карты со стола
+			for (const handCard of computer.hand) {
+				// Проверка специальных карт (K, Q)
+				if (handCard.value === 'Q') {
+					const queens = gameState.tableCards.filter(card => card.value === 'Q');
+					if (queens.length > 0) {
+						takeCards(computer, handCard, [queens[0]]);
+						madeMove = true;
+						break;
+					}
+				} else if (handCard.value === 'K') {
+					const kings = gameState.tableCards.filter(card => card.value === 'K');
+					if (kings.length > 0) {
+						takeCards(computer, handCard, [kings[0]]);
+						madeMove = true;
+						break;
+					}
+				} else if (handCard.value !== 'J') { // Валетов мы уже проверили
+					// Ищем комбинации для взятия
+					const bestCombination = findBestCombination(handCard, gameState.tableCards);
+					if (bestCombination.length > 0) {
+						takeCards(computer, handCard, bestCombination);
+						madeMove = true;
+						break;
+					}
+				}
+			}
+		}
+
+		// 4. Если невозможно взять карты, сбрасываем карту
+		if (!madeMove) {
+			console.log("Компьютер не может взять карты, сбрасывает карту");
+
+			// Выбираем "наименее полезную" карту для сброса
+			let cardToDiscard = selectCardToDiscard(computer.hand);
 
 			discardCard(computer, cardToDiscard);
+			madeMove = true;
 		}
 
-		// Обновить UI
+		// Обновляем UI
 		renderPlayerHand(computer, elements.opponentCards, false);
 		renderTableCards();
 		updateCollectedCount();
@@ -1238,13 +1332,152 @@ function computerMove() {
 		// Следующий ход
 		setTimeout(() => {
 			nextTurn();
-		}, 500); // Небольшая задержка для анимации
+		}, 500);
+
 	} catch (error) {
 		console.error("Ошибка в ходе компьютера:", error);
-		// В случае ошибки передаем ход игроку
 		gameState.currentPlayerIndex = 0;
 		updateActivePlayerUI();
 	}
+}
+
+// Вспомогательная функция для поиска дополнительных карт, которые нужно взять для завершения комбинации
+function findCardsToComplete(handCard, mustIncludeCards, tableCards) {
+	// Исключаем карты, которые мы уже должны взять
+	const remainingTableCards = tableCards.filter(card =>
+		!mustIncludeCards.some(c => c.suit === card.suit && c.value === card.value)
+	);
+
+	// Если у нас валет, мы можем взять все карты (кроме Q и K)
+	if (handCard.value === 'J') {
+		return remainingTableCards.filter(card => !['Q', 'K'].includes(card.value));
+	}
+
+	// Находим, сколько нам нужно добрать для суммы 11
+	const initialSum = mustIncludeCards.reduce((sum, card) => sum + card.numericValue, 0) + handCard.numericValue;
+	const targetSum = 11;
+	const neededSum = targetSum - initialSum;
+
+	// Если нам не нужно добирать (например, у нас уже сумма 11), возвращаем пустой массив
+	if (neededSum <= 0) return [];
+
+	// Ищем комбинации карт, которые дадут нам нужную сумму
+	for (let i = 1; i <= remainingTableCards.length; i++) {
+		const combinations = getCombinations(remainingTableCards, i);
+		for (const combo of combinations) {
+			const sum = combo.reduce((s, card) => s + card.numericValue, 0);
+			if (sum === neededSum) {
+				return combo;
+			}
+		}
+	}
+
+	return []; // Не нашли подходящую комбинацию
+}
+
+// Функция для определения, может ли карта взять выбранные карты со стола
+function canTakeCards(handCard, tableCards) {
+	// Валет может взять любую карту, кроме Q и K
+	if (handCard.value === 'J') {
+		return tableCards.every(card => !['Q', 'K'].includes(card.value));
+	}
+
+	// Дама может взять только другую Даму
+	if (handCard.value === 'Q') {
+		return tableCards.length === 1 && tableCards[0].value === 'Q';
+	}
+
+	// Король может взять только другого Короля
+	if (handCard.value === 'K') {
+		return tableCards.length === 1 && tableCards[0].value === 'K';
+	}
+
+	// Проверяем сумму
+	const tableSum = tableCards.reduce((acc, card) => acc + card.numericValue, 0);
+	return tableSum + handCard.numericValue === 11;
+}
+
+// Функция для поиска лучшей комбинации карт для взятия
+function findBestCombination(handCard, tableCards) {
+	// Если это валет, Q, K - проверяем по специальным правилам
+	if (handCard.value === 'J') {
+		const validCards = tableCards.filter(card => !['Q', 'K'].includes(card.value));
+		return validCards;
+	}
+
+	if (handCard.value === 'Q') {
+		const queens = tableCards.filter(card => card.value === 'Q');
+		return queens.length > 0 ? [queens[0]] : [];
+	}
+
+	if (handCard.value === 'K') {
+		const kings = tableCards.filter(card => card.value === 'K');
+		return kings.length > 0 ? [kings[0]] : [];
+	}
+
+	// Для остальных карт ищем комбинации, дающие сумму 11
+	let bestCombination = [];
+	let maxLuckyCards = -1; // Счетчик счастливых карт в комбинации
+
+	// Проверяем комбинации разной длины
+	for (let i = 1; i <= tableCards.length; i++) {
+		const combinations = getCombinations(tableCards, i);
+		for (const combo of combinations) {
+			// Если туз, исключаем комбинации с Q и K
+			if (handCard.value === 'A' && combo.some(card => ['Q', 'K'].includes(card.value))) {
+				continue;
+			}
+
+			// Проверяем, дает ли комбинация сумму 11
+			const sum = combo.reduce((acc, card) => acc + card.numericValue, 0);
+			if (sum + handCard.numericValue === 11) {
+				// Считаем счастливые карты в комбинации
+				const luckyCardsCount = combo.filter(card =>
+					(card.suit === 'clubs' && card.value === '2') ||
+					(card.suit === 'diamonds' && card.value === '10')
+				).length;
+
+				// Обновляем лучшую комбинацию, если она содержит больше счастливых карт
+				// или это первая найденная комбинация
+				if (luckyCardsCount > maxLuckyCards || bestCombination.length === 0) {
+					bestCombination = combo;
+					maxLuckyCards = luckyCardsCount;
+				} else if (luckyCardsCount === maxLuckyCards && combo.length > bestCombination.length) {
+					// Если одинаковое количество счастливых карт, берем комбинацию с большим количеством карт
+					bestCombination = combo;
+				}
+			}
+		}
+	}
+
+	return bestCombination;
+}
+
+// Функция для выбора карты для сброса
+function selectCardToDiscard(hand) {
+	// Приоритеты сброса (от наименее к наиболее ценным):
+	// 1. Обычные карты (не J, Q, K, не счастливые)
+	// 2. J, Q, K (сохраняем их, если возможно)
+	// 3. Счастливые карты (2 крести, 10 бубны - самые ценные)
+
+	// Ищем обычную карту для сброса
+	for (const card of hand) {
+		if (!['J', 'Q', 'K'].includes(card.value) &&
+			!(card.suit === 'clubs' && card.value === '2') &&
+			!(card.suit === 'diamonds' && card.value === '10')) {
+			return card;
+		}
+	}
+
+	// Если обычных карт нет, сбрасываем специальную карту
+	for (const card of hand) {
+		if (['J', 'Q', 'K'].includes(card.value)) {
+			return card;
+		}
+	}
+
+	// В крайнем случае, сбрасываем любую карту
+	return hand[0];
 }
 
 function checkGameEnd() {
@@ -1269,6 +1502,10 @@ function endGame() {
 
 	// Подсчитать очки
 	calculateScores();
+
+	// Обновляем общий счет игры
+	gameState.totalScores[0] += gameState.players[0].score;
+	gameState.totalScores[1] += gameState.players[1].score;
 
 	// Отобразить результаты
 	displayResults();
@@ -1372,7 +1609,10 @@ function displayResults() {
 	document.getElementById('opponent-bonus').textContent = gameState.players[opponentIndex].bonusPoints;
 	document.getElementById('opponent-total-score').textContent = gameState.players[opponentIndex].score;
 
-	// Победитель
+	// Отображаем информацию о текущем раунде и общем счете
+	displayTotalScoreInfo();
+
+	// Победитель в раунде
 	const winnerMessage = document.getElementById('game-winner');
 
 	if (gameState.isOnlineGame) {
@@ -1380,22 +1620,122 @@ function displayResults() {
 		const opponent = gameState.players[opponentIndex];
 
 		if (myPlayer.score > opponent.score) {
-			winnerMessage.textContent = "Вы победили! 🎉";
+			winnerMessage.textContent = "Вы победили в этом раунде! 🎉";
 		} else if (opponent.score > myPlayer.score) {
-			winnerMessage.textContent = `${opponent.name} победил!`;
+			winnerMessage.textContent = `${opponent.name} победил в этом раунде!`;
 		} else {
-			winnerMessage.textContent = "Ничья!";
+			winnerMessage.textContent = "Ничья в этом раунде!";
 		}
 	} else {
 		if (gameState.players[0].score > gameState.players[1].score) {
-			winnerMessage.textContent = "Вы победили! 🎉";
+			winnerMessage.textContent = "Вы победили в этом раунде! 🎉";
 		} else if (gameState.players[1].score > gameState.players[0].score) {
-			winnerMessage.textContent = "Компьютер победил!";
+			winnerMessage.textContent = "Компьютер победил в этом раунде!";
 		} else {
-			winnerMessage.textContent = "Ничья!";
+			winnerMessage.textContent = "Ничья в этом раунде!";
 		}
 	}
+
+	// Проверяем, есть ли победитель по общему счету (достиг 21 очка)
+	checkMatchWinner();
+
 	createFireworks();
+}
+
+// Функция для отображения общего счета и информации о матче
+function displayTotalScoreInfo() {
+	// Проверяем, существует ли уже блок информации о счете
+	let totalScoreInfo = document.querySelector('.total-score-info');
+	if (!totalScoreInfo) {
+		// Создаем блок для отображения общего счета
+		totalScoreInfo = document.createElement('div');
+		totalScoreInfo.className = 'total-score-info';
+
+		// Добавляем его в результаты
+		const resultsSection = document.getElementById('game-results');
+		resultsSection.insertBefore(totalScoreInfo, document.getElementById('new-game-btn'));
+	}
+
+	// Определяем имена игроков в зависимости от типа игры
+	let playerName = 'Вы';
+	let opponentName = 'Компьютер';
+
+	if (gameState.isOnlineGame) {
+		const myPlayerIndex = gameState.playerIndex;
+		const opponentIndex = myPlayerIndex === 0 ? 1 : 0;
+
+		playerName = gameState.players[myPlayerIndex].name;
+		opponentName = gameState.players[opponentIndex].name;
+	}
+
+	// Обновляем содержимое блока
+	totalScoreInfo.innerHTML = `
+            <h3>Общий счёт матча</h3>
+            <div class="score-row">
+                <span>${playerName}: ${gameState.totalScores[0]}</span>
+                <span>${opponentName}: ${gameState.totalScores[1]}</span>
+            </div>
+            <div class="score-target">Игра ведётся до ${gameState.targetScore} очков</div>
+        `;
+}
+
+// Функция для проверки победителя в матче
+function checkMatchWinner() {
+	// Проверяем, достиг ли кто-то 21 очка
+	let matchWinner = null;
+
+	if (gameState.totalScores[0] >= gameState.targetScore) {
+		matchWinner = "player";
+	} else if (gameState.totalScores[1] >= gameState.targetScore) {
+		matchWinner = "opponent";
+	}
+
+	if (matchWinner) {
+		// Создаем элемент для отображения победителя матча
+		const matchWinnerElement = document.createElement('div');
+		matchWinnerElement.className = 'match-winner';
+
+		if (matchWinner === "player") {
+			matchWinnerElement.textContent = "Поздравляем! Вы победили в матче!";
+		} else {
+			matchWinnerElement.textContent = gameState.isOnlineGame ?
+				`${gameState.players[gameState.playerIndex === 0 ? 1 : 0].name} победил в матче!` :
+				"Компьютер победил в матче!";
+		}
+
+		// Находим информацию о счете и добавляем после нее
+		const totalScoreInfo = document.querySelector('.total-score-info');
+		if (totalScoreInfo) {
+			totalScoreInfo.appendChild(matchWinnerElement);
+		}
+
+		// Изменяем текст кнопки на "Новый матч"
+		const newGameBtn = document.getElementById('new-game-btn');
+		if (newGameBtn) {
+			newGameBtn.textContent = "Новый матч";
+		}
+	}
+}
+
+// Функция для начала нового раунда
+function startNewRound() {
+	console.log("Начинаем новый раунд");
+
+	// Увеличиваем номер раунда
+	gameState.roundNumber++;
+
+	// Сохраняем общий счет
+	const totalScores = [...gameState.totalScores];
+
+	// Инициализируем игру заново
+	initializeGame();
+
+	// Восстанавливаем общий счет
+	gameState.totalScores = totalScores;
+	gameState.roundNumber = gameState.roundNumber;
+
+	// Запускаем игровой процесс
+	startGameplay();
 }
 
 // Функции настройки игры
@@ -1417,6 +1757,10 @@ function startGame() {
 
 	// Сбрасываем флаг онлайн-игры для локального режима
 	gameState.isOnlineGame = false;
+
+	// Сбрасываем счет и номер раунда
+	gameState.totalScores = [0, 0];
+	gameState.roundNumber = 1;
 
 	// Инициализировать игру напрямую
 	initializeGame();
@@ -1514,7 +1858,24 @@ function closeRules() {
 	elements.modal.style.display = 'none';
 }
 
+// Функция для сброса игры и перехода к экрану настройки
+// Добавляем функционал диалога подтверждения
 function resetGame() {
+	// Проверяем, идет ли игра и нужно ли показывать диалог подтверждения
+	if (!gameState.gameEnded && (gameState.isOnlineGame || gameState.players[0].hand.length > 0 || gameState.players[1].hand.length > 0)) {
+		showConfirmDialog(
+			"Вы действительно хотите выйти из игры?",
+			"Текущая игра будет завершена, и все прогресс будет потерян.",
+			performReset,
+			() => {} // Функция при отмене - ничего не делаем
+		);
+	} else {
+		performReset();
+	}
+}
+
+// Функция для фактического сброса игры
+function performReset() {
 	// Сбросить игровое состояние и UI
 	showSection(gameSections.setup);
 
@@ -1541,8 +1902,194 @@ function resetGame() {
 	gameState.roomId = null;
 	gameState.playerIndex = null;
 
+	// Сбросить счет и номер раунда при полном выходе из игры
+	gameState.totalScores = [0, 0];
+	gameState.roundNumber = 1;
+
 	// Скрыть информацию о комнате, если она отображается
 	elements.roomInfo.classList.add('hidden');
+
+	// Удаляем дополнительные элементы UI, если они есть
+	const roundIndicator = document.querySelector('.round-indicator');
+	if (roundIndicator) roundIndicator.remove();
+
+	const scoreDisplay = document.querySelector('.game-score-display');
+	if (scoreDisplay) scoreDisplay.remove();
+}
+
+// Функция для отображения диалога подтверждения
+function showConfirmDialog(title, message, onConfirm, onCancel) {
+	// Создаем элементы диалога
+	const overlay = document.createElement('div');
+	overlay.className = 'dialog-overlay';
+
+	const dialog = document.createElement('div');
+	dialog.className = 'dialog-box';
+
+	dialog.innerHTML = `
+            <div class="dialog-content">
+                <h3>${title}</h3>
+                <p>${message}</p>
+                <div class="dialog-buttons">
+                    <button class="dialog-btn confirm-btn">Да</button>
+                    <button class="dialog-btn cancel-btn">Остаться</button>
+                </div>
+            </div>
+        `;
+
+	// Добавляем диалог в DOM
+	overlay.appendChild(dialog);
+	document.body.appendChild(overlay);
+
+	// Добавляем обработчики событий
+	const confirmBtn = dialog.querySelector('.confirm-btn');
+	const cancelBtn = dialog.querySelector('.cancel-btn');
+
+	confirmBtn.addEventListener('click', () => {
+		document.body.removeChild(overlay);
+		if (typeof onConfirm === 'function') onConfirm();
+	});
+
+	cancelBtn.addEventListener('click', () => {
+		document.body.removeChild(overlay);
+		if (typeof onCancel === 'function') onCancel();
+	});
+}
+
+// Обработчик кнопки "Новая игра" в экране результатов
+function handleNewGameClick() {
+	// Проверяем, есть ли победитель матча (кто-то набрал >= 21 очка)
+	const hasMatchWinner = gameState.totalScores[0] >= gameState.targetScore ||
+		gameState.totalScores[1] >= gameState.targetScore;
+
+	if (hasMatchWinner) {
+		// Если есть победитель матча, полностью сбрасываем игру
+		resetGame();
+	} else {
+		// Иначе начинаем новый раунд
+		startNewRound();
+	}
+}
+
+// Функция для отмены выбора всех карт при клике на пустое место
+// Функция для отмены выбора всех карт при клике на пустое место
+function setupCancelSelectionOnEmptyClick() {
+	console.log("Настройка отмены выбора карт при клике на пустое место...");
+
+	// Находим игровой стол
+	const gameTable = document.querySelector('.game-table');
+	if (!gameTable) {
+		console.error("Игровой стол не найден!");
+		return;
+	}
+
+	// Добавляем обработчик клика
+	gameTable.addEventListener('click', function(event) {
+		console.log("Клик на игровом столе", event.target);
+
+		// Проверяем, был ли клик на самом игровом столе или на области table-cards
+		// но не на конкретной карте
+		if (event.target === gameTable ||
+			(event.target.classList.contains('table-cards') &&
+				!event.target.classList.contains('card'))) {
+
+			console.log("Отмена выбора карт");
+
+			// Снимаем выделение с карт в руке
+			const handCards = document.querySelectorAll('#player-cards .card');
+			handCards.forEach(card => card.classList.remove('selected'));
+
+			// Снимаем выделение с карт на столе
+			const tableCards = document.querySelectorAll('#table-cards .card');
+			tableCards.forEach(card => card.classList.remove('selected'));
+
+			// Сбрасываем выбор в состоянии игры
+			if (typeof gameState !== 'undefined') {
+				gameState.selectedHandCard = null;
+				gameState.selectedTableCards = [];
+			}
+
+			// Отключаем кнопку подтверждения
+			const confirmBtn = document.getElementById('confirm-selection-btn');
+			if (confirmBtn) {
+				confirmBtn.disabled = true;
+			}
+
+			// Обновляем сообщение для игрока
+			const gameMessage = document.getElementById('game-message');
+			if (gameMessage) {
+				gameMessage.textContent = "Выбор отменен. Выберите карту из руки.";
+
+				// Через небольшую паузу возвращаем стандартное сообщение
+				setTimeout(() => {
+					if (typeof gameState !== 'undefined') {
+						if (gameState.isOnlineGame) {
+							if (typeof gameClient !== 'undefined' && gameClient.isMyTurn) {
+								gameMessage.textContent = gameClient.isMyTurn() ? "Ваш ход" : "Ход соперника";
+							}
+						} else {
+							gameMessage.textContent = gameState.currentPlayerIndex === 0 ? "Ваш ход" : "Ход соперника";
+						}
+					}
+				}, 1500);
+			}
+		}
+	});
+
+	// Дополнительно добавляем обработчик на пустую область карт стола
+	const tableCards = document.querySelector('#table-cards');
+	if (tableCards) {
+		tableCards.addEventListener('click', function(event) {
+			// Проверяем, был ли клик непосредственно на контейнере, а не на карте
+			if (event.target === tableCards) {
+				console.log("Клик на пустой области карт стола");
+
+				// Снимаем выделение с карт в руке
+				const handCards = document.querySelectorAll('#player-cards .card');
+				handCards.forEach(card => card.classList.remove('selected'));
+
+				// Снимаем выделение с карт на столе
+				const tableCards = document.querySelectorAll('#table-cards .card');
+				tableCards.forEach(card => card.classList.remove('selected'));
+
+				// Сбрасываем выбор в состоянии игры
+				if (typeof gameState !== 'undefined') {
+					gameState.selectedHandCard = null;
+					gameState.selectedTableCards = [];
+				}
+
+				// Отключаем кнопку подтверждения
+				const confirmBtn = document.getElementById('confirm-selection-btn');
+				if (confirmBtn) {
+					confirmBtn.disabled = true;
+				}
+
+				// Обновляем сообщение для игрока
+				const gameMessage = document.getElementById('game-message');
+				if (gameMessage) {
+					gameMessage.textContent = "Выбор отменен. Выберите карту из руки.";
+
+					// Через небольшую паузу возвращаем стандартное сообщение
+					setTimeout(() => {
+						if (typeof gameState !== 'undefined') {
+							if (gameState.isOnlineGame) {
+								if (typeof gameClient !== 'undefined' && gameClient.isMyTurn) {
+									gameMessage.textContent = gameClient.isMyTurn() ? "Ваш ход" : "Ход соперника";
+								}
+							} else {
+								gameMessage.textContent = gameState.currentPlayerIndex === 0 ? "Ваш ход" : "Ход соперника";
+							}
+						}
+					}, 1500);
+				}
+
+				// Предотвращаем всплытие события, чтобы не сработал обработчик на gameTable
+				event.stopPropagation();
+			}
+		});
+	}
+
+	console.log("Настройка отмены выбора карт завершена");
 }
 
 // Настройка слушателей событий
@@ -1574,7 +2121,8 @@ function setupEventListeners() {
 		elements.restartBtn.addEventListener('click', resetGame);
 	}
 	if (elements.newGameBtn) {
-		elements.newGameBtn.addEventListener('click', resetGame);
+		// Заменяем обработчик на новую функцию
+		elements.newGameBtn.addEventListener('click', handleNewGameClick);
 	}
 
 	// Щелчок вне модального окна
@@ -1587,28 +2135,29 @@ function setupEventListeners() {
 	// для обработки восстановления активности страницы
 
 	document.addEventListener('visibilitychange', function() {
-        if (document.visibilityState === 'visible') {
-            console.log("Страница снова активна, проверяем состояние соединения");
+		if (document.visibilityState === 'visible') {
+			console.log("Страница снова активна, проверяем состояние соединения");
 
-            // Используем новый метод для проверки соединения
-            if (gameClient) {
-                setTimeout(() => {
-                    gameClient.checkConnectionAndReconnect();
-                }, 500); // Даем небольшую задержку для стабилизации соединения
-            }
-        }
-    });
+			// Используем новый метод для проверки соединения
+			if (gameClient) {
+				setTimeout(() => {
+					gameClient.checkConnectionAndReconnect();
+				}, 500); // Даем небольшую задержку для стабилизации соединения
+			}
+		}
+	});
 
 	// Кнопка обновления статуса игры
 	const refreshStatusBtn = document.getElementById('refresh-status-btn');
-    if (refreshStatusBtn) {
-        refreshStatusBtn.addEventListener('click', function() {
-            showNotification('Обновление статуса игры...', 'info');
-            if (gameClient) {
-                gameClient.checkConnectionAndReconnect();
-            }
-        });
-    }
+	if (refreshStatusBtn) {
+		refreshStatusBtn.addEventListener('click', function() {
+			showNotification('Обновление статуса игры...', 'info');
+			if (gameClient) {
+				gameClient.checkConnectionAndReconnect();
+			}
+		});
+	}
+	setupCancelSelectionOnEmptyClick();
 }
 
 // Функции создания карт и колоды
@@ -1737,13 +2286,13 @@ function createFireworks() {
 
 	// Заменяем содержимое на новую структуру с эмодзи
 	winnerElement.innerHTML = `
-        <div class="winner-text">
-            ${originalText.replace('🎉', '')}
-            <span class="winner-emoji"><i class="fas fa-trophy"></i></span>
-            <span class="winner-emoji" style="animation-delay: 0.2s"><i class="fas fa-party-horn"></i></span>
-            <span class="winner-emoji" style="animation-delay: 0.4s"><i class="fas fa-sparkles"></i></span>
-        </div>
-    `;
+            <div class="winner-text">
+                ${originalText.replace('🎉', '')}
+                <span class="winner-emoji"><i class="fas fa-trophy"></i></span>
+                <span class="winner-emoji" style="animation-delay: 0.2s"><i class="fas fa-party-horn"></i></span>
+                <span class="winner-emoji" style="animation-delay: 0.4s"><i class="fas fa-sparkles"></i></span>
+            </div>
+        `;
 
 	// Создаем 20 элементов фейерверка
 	for (let i = 0; i < 20; i++) {

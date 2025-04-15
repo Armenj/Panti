@@ -116,7 +116,10 @@ function initializeGame() {
         gameStarted: false,
         gameEnded: false,
         lastTakenCards: [],
-        lastTakenBy: null
+        lastTakenBy: null,
+        totalScores: [0, 0], // Добавляем общий счет игроков
+        roundNumber: 1, // Добавляем номер раунда
+        targetScore: 21 // Целевой счет для победы в матче
     };
 
     // Раздаем начальные карты
@@ -171,6 +174,51 @@ io.on('connection', (socket) => {
         });
 
         console.log(`Создана комната: ${roomId}`);
+    });
+
+    // Запуск нового раунда
+    socket.on('start-new-round', (roomId) => {
+        if (!rooms.has(roomId)) {
+            socket.emit('error', { message: 'Комната не найдена' });
+            return;
+        }
+
+        const gameState = rooms.get(roomId);
+
+        // Увеличиваем номер раунда
+        gameState.roundNumber++;
+
+        // Сохраняем имена игроков и общий счет
+        const playerNames = gameState.players.map(p => p.name);
+        const totalScores = [...gameState.totalScores];
+        const playerIds = gameState.players.map(p => p.id);
+        const roundNumber = gameState.roundNumber;
+
+        // Создаем новое состояние игры
+        const newGameState = initializeGame();
+
+        // Восстанавливаем информацию об игроках
+        newGameState.players[0].id = playerIds[0];
+        newGameState.players[1].id = playerIds[1];
+        newGameState.players[0].name = playerNames[0];
+        newGameState.players[1].name = playerNames[1];
+        newGameState.players[0].connected = true;
+        newGameState.players[1].connected = true;
+        newGameState.totalScores = totalScores;
+        newGameState.roundNumber = roundNumber;
+        newGameState.gameStarted = true;
+
+        // Устанавливаем случайно первого игрока
+        newGameState.currentPlayerIndex = Math.floor(Math.random() * 2);
+
+        // Обновляем состояние комнаты
+        rooms.set(roomId, newGameState);
+        saveRoomToFile(roomId, newGameState);
+
+        // Оповещаем игроков о начале нового раунда
+        io.to(roomId).emit('game-start', newGameState);
+
+        console.log(`Начат новый раунд в комнате: ${roomId}`);
     });
 
     // Присоединение к существующей комнате
@@ -588,6 +636,18 @@ function endGame(gameState) {
 
     // Подсчет очков
     calculateScores(gameState);
+
+    // Обновляем общий счет
+    gameState.totalScores[0] += gameState.players[0].score;
+    gameState.totalScores[1] += gameState.players[1].score;
+
+    // Проверяем, победил ли кто-то в матче
+    gameState.matchWinner = null;
+    if (gameState.totalScores[0] >= gameState.targetScore) {
+        gameState.matchWinner = 0;
+    } else if (gameState.totalScores[1] >= gameState.targetScore) {
+        gameState.matchWinner = 1;
+    }
 }
 
 function calculateScores(gameState) {
@@ -673,24 +733,24 @@ function cleanupOldRooms() {
                 const stats = fs.statSync(filePath);
 
                 // Если файл старше 3 дней, удаляем его
-                const fileAge = now - stats.mtimeMs;
-                if (fileAge > 3 * 24 * 60 * 60 * 1000) {
-                    fs.unlinkSync(filePath);
-                    const roomId = file.replace('.json', '');
-                    if (rooms.has(roomId)) {
-                        rooms.delete(roomId);
+                                const fileAge = now - stats.mtimeMs;
+                                if (fileAge > 3 * 24 * 60 * 60 * 1000) {
+                                    fs.unlinkSync(filePath);
+                                    const roomId = file.replace('.json', '');
+                                    if (rooms.has(roomId)) {
+                                        rooms.delete(roomId);
+                                    }
+                                    console.log(`Удалена старая комната: ${roomId}`);
+                                }
+                            }
+                        });
+                    } catch (error) {
+                        console.error("Ошибка при очистке старых комнат:", error);
                     }
-                    console.log(`Удалена старая комната: ${roomId}`);
                 }
-            }
-        });
-    } catch (error) {
-        console.error("Ошибка при очистке старых комнат:", error);
-    }
-}
 
-// Запуск сервера
-const PORT = process.env.PORT || 8084;
-server.listen(PORT, () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
-});
+                // Запуск сервера
+                const PORT = process.env.PORT || 8084;
+                server.listen(PORT, () => {
+                    console.log(`Сервер запущен на порту ${PORT}`);
+                });
