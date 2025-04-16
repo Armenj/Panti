@@ -1,5 +1,3 @@
-/* Современный оптимизированный дизайн для игры "Одиннадцать" */
-
 /* General Styles */
 * {
     margin: 0;
@@ -1345,4 +1343,79 @@ button:disabled {
 /* Скрываем поле "Дополнительные очки" */
 .result-details p:nth-last-child(2) {
     display: none;
+}
+
+/* Обновленные стили для отображения счета игры */
+.game-score-display {
+    /* Базовые стили (для десктопа остаются прежними) */
+    position: absolute;
+    background-color: rgba(255,255,255,0.8);
+    padding: 4px 8px;
+    border-radius: 6px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    z-index: 10;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* Для мобильных устройств - перемещаем в шапку */
+@media screen and (max-width: 768px) {
+    .game-score-display {
+        /* Изменение позиционирования */
+        position: fixed;
+        top: 8px;
+        right: 10px;
+        left: auto;
+        transform: none;
+        /* Увеличиваем размер шрифта */
+        font-size: 12px;
+        padding: 4px 8px;
+        /* Увеличиваем z-index чтобы быть поверх других элементов */
+        z-index: 1001;
+        min-width: 85px;
+        max-width: 140px;
+    }
+
+    .game-score-display .score-title {
+        font-size: 12px;
+        margin-bottom: 3px;
+        font-weight: 600;
+    }
+
+    .game-score-display .score-value {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 11px;
+    }
+
+    .game-score-display .score-value strong {
+        font-size: 13px;
+    }
+
+    /* Корректировка отступа для game-info */
+    .game-info {
+        padding-right: 90px;
+    }
+
+    /* Сдвигаем индикатор раунда чтобы не перекрывал карты */
+    .round-indicator {
+        top: 5px;
+        left: 10px;
+        transform: none;
+    }
+}
+
+/* Для очень маленьких экранов корректируем еще сильнее */
+@media screen and (max-width: 480px) {
+    .game-score-display {
+        top: 6px;
+        right: 5px;
+        font-size: 11px;
+        padding: 3px 6px;
+    }
+
+    .game-info {
+        padding-right: 80px;
+    }
 }
