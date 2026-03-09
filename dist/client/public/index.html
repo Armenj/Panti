@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a3a2a" />
+  <title>Одиннадцать 🃏</title>
+  <link rel="stylesheet" href="/styles/main.css" />
+</head>
+<body>
+
+<!-- ========== ШАПКА ========== -->
+<header class="app-header">
+  <h1 class="logo">🃏 Одиннадцать</h1>
+  <div class="header-actions">
+    <div class="deck-badge" id="deck-badge">
+      <span id="deck-count">52</span> карт
+    </div>
+    <button class="btn btn-ghost" id="btn-rules" aria-label="Правила">📖 Правила</button>
+    <button class="btn btn-ghost" id="btn-restart" onclick="location.reload()" aria-label="Новая игра">↺</button>
+  </div>
+</header>
+
+<!-- ========== ЭКРАН НАСТРОЙКИ ========== -->
+<section id="section-setup" class="screen screen-setup">
+  <div class="setup-card">
+    <h2>Выберите режим игры</h2>
+
+    <div class="mode-grid">
+      <label class="mode-option">
+        <input type="radio" name="game-mode" value="vs-computer" checked />
+        <span class="mode-icon">🤖</span>
+        <span class="mode-label">Против<br>компьютера</span>
+      </label>
+      <label class="mode-option">
+        <input type="radio" name="game-mode" value="online-2p" />
+        <span class="mode-icon">👥</span>
+        <span class="mode-label">Онлайн<br>2 игрока</span>
+      </label>
+      <label class="mode-option">
+        <input type="radio" name="game-mode" value="online-3p" />
+        <span class="mode-icon">👥👤</span>
+        <span class="mode-label">Онлайн<br>3 игрока</span>
+      </label>
+      <label class="mode-option">
+        <input type="radio" name="game-mode" value="online-2v2" />
+        <span class="mode-icon">⚔️</span>
+        <span class="mode-label">Командная<br>2v2</span>
+      </label>
+    </div>
+
+    <div class="setup-form">
+      <label for="player-name">Ваше имя</label>
+      <input type="text" id="player-name" class="input" placeholder="Введите имя" maxlength="20" />
+    </div>
+
+    <div class="setup-actions">
+      <button class="btn btn-primary btn-large" id="btn-start-local">
+        ▶ Играть
+      </button>
+    </div>
+
+    <!-- Онлайн-секция (показывается при выборе онлайн-режима) -->
+    <div class="online-section" id="online-section" hidden>
+      <div class="divider">— или —</div>
+      <div class="online-actions">
+        <button class="btn btn-secondary" id="btn-create-room">
+          ＋ Создать комнату
+        </button>
+        <div class="join-row">
+          <input type="text" id="room-id-input" class="input input-code" placeholder="Код комнаты" maxlength="6" />
+          <button class="btn btn-secondary" id="btn-join-room">Войти</button>
+        </div>
+      </div>
+      <!-- Отображение кода созданной комнаты -->
+      <div id="room-code-section" hidden class="room-code-section">
+        <p>Код комнаты:</p>
+        <strong id="room-code-display" class="room-code"></strong>
+        <button class="btn btn-ghost btn-small" id="btn-copy-link">📋 Скопировать ссылку</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ИГРОВОЙ ЭКРАН ========== -->
+<section id="section-game" class="screen screen-game" hidden>
+
+  <!-- Индикатор хода -->
+  <div id="turn-indicator" class="turn-indicator">Ход: —</div>
+
+  <!-- Игровое поле -->
+  <div class="game-board" id="game-board">
+
+    <!-- Верхний игрок -->
+    <div class="player-area player-top" id="player-top">
+      <div class="player-info">
+        <span class="player-name">—</span>
+        <span class="player-score">0 очков</span>
+        <span class="player-collected">Карт: 0</span>
+      </div>
+      <div class="player-hand" id="hand-top"></div>
+    </div>
+
+    <!-- Левый игрок -->
+    <div class="player-area player-left" id="player-left">
+      <div class="player-info vertical">
+        <span class="player-name">—</span>
+        <span class="player-score">0 очков</span>
+        <span class="player-collected">Карт: 0</span>
+      </div>
+      <div class="player-hand hand-vertical" id="hand-left"></div>
+    </div>
+
+    <!-- Центральный стол -->
+    <div class="center-area">
+      <div class="table-area">
+        <div class="table-cards" id="table-cards"></div>
+        <div class="deck-pile" id="deck-pile">
+          <div class="card card-back deck-visual"></div>
+          <div class="deck-label"><span id="deck-count">52</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Правый игрок -->
+    <div class="player-area player-right" id="player-right">
+      <div class="player-hand hand-vertical" id="hand-right"></div>
+      <div class="player-info vertical">
+        <span class="player-name">—</span>
+        <span class="player-score">0 очков</span>
+        <span class="player-collected">Карт: 0</span>
+      </div>
+    </div>
+
+    <!-- Нижний игрок (мы) -->
+    <div class="player-area player-bottom" id="player-bottom">
+      <div class="player-hand" id="hand-bottom"></div>
+      <div class="player-info player-info-bottom">
+        <span class="player-name">—</span>
+        <span class="player-score">0 очков</span>
+        <span class="player-collected">Карт: 0</span>
+        <div class="action-buttons">
+          <button class="btn btn-success" id="btn-take" disabled>✔ Взять</button>
+          <button class="btn btn-danger" id="btn-discard" disabled>✕ Сбросить</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ========== РЕЗУЛЬТАТЫ РАУНДА ========== -->
+<section id="section-round-result" class="screen screen-result" hidden>
+  <div class="result-card">
+    <h2>🏆 Итоги раунда</h2>
+    <div id="round-result-content"></div>
+    <div class="result-actions">
+      <button class="btn btn-primary" id="btn-new-round">▶ Следующий раунд</button>
+      <button class="btn btn-ghost" onclick="location.reload()">↺ В меню</button>
+    </div>
+  </div>
+</section>
+
+<!-- ========== КОНЕЦ МАТЧА ========== -->
+<section id="section-match-result" class="screen screen-result" hidden>
+  <div class="result-card match-result">
+    <div class="fireworks" aria-hidden="true">🎉🎊🎉</div>
+    <h2>Победитель!</h2>
+    <p class="match-winner-name" id="match-winner-name">—</p>
+    <button class="btn btn-primary btn-large" id="btn-new-match">Новая игра</button>
+  </div>
+</section>
+
+<!-- ========== УВЕДОМЛЕНИЯ ========== -->
+<div id="notifications" class="notifications" aria-live="polite"></div>
+
+<!-- ========== ПРАВИЛА (модалка) ========== -->
+<dialog id="modal-rules" class="modal-rules">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Правила игры «Одиннадцать»</h2>
+      <button class="btn btn-ghost" id="btn-rules-close" aria-label="Закрыть">✕</button>
+    </div>
+    <div class="modal-body">
+      <h3>Цель</h3>
+      <p>Набрать 21 очко раньше соперника.</p>
+
+      <h3>Очки за раунд</h3>
+      <ul>
+        <li><strong>+2</strong> — у кого больше всего карт</li>
+        <li><strong>+1</strong> — у кого больше всего треф (♣)</li>
+        <li><strong>+1</strong> — у кого есть <strong>♣2</strong></li>
+        <li><strong>+1</strong> — у кого есть <strong>♦10</strong></li>
+      </ul>
+
+      <h3>Как брать карты</h3>
+      <ul>
+        <li><strong>Обычная карта</strong> (2–10, туз): берёт комбинацию карт со стола, у которой сумма равна 11. Туз = 1.</li>
+        <li><strong>Валет (J)</strong>: берёт любые карты со стола, кроме Дам и Королей.</li>
+        <li><strong>Дама (Q)</strong>: берёт только другую Даму.</li>
+        <li><strong>Король (K)</strong>: берёт только другого Короля.</li>
+      </ul>
+
+      <h3>Ход</h3>
+      <p>Выберите карту из руки → выберите карты на столе → нажмите «Взять».<br>
+      Если взять нечего — нажмите «Сбросить».</p>
+    </div>
+  </div>
+</dialog>
+
+<!-- ========== СКРИПТЫ ========== -->
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="/js/main.js"></script>
+
+<!-- Переключение онлайн-секции -->
+<script>
+  document.querySelectorAll('input[name="game-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const mode = document.querySelector('input[name="game-mode"]:checked').value;
+      const isOnline = mode.startsWith('online');
+      document.getElementById('online-section').hidden = !isOnline;
+      document.getElementById('btn-start-local').textContent = isOnline ? '▶ Быстрая игра с ботом' : '▶ Играть';
+    });
+  });
+</script>
+
+</body>
+</html>
