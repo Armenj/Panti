@@ -2,3 +2,15 @@ node_modules/
 *.log
 game_rooms/
 .env
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
