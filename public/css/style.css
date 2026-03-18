@@ -37,6 +37,7 @@ body {
     color: var(--text-color);
     line-height: 1.5;
     overflow-x: hidden;
+    max-width: 100vw;
 }
 
 .container {
@@ -158,8 +159,12 @@ button:disabled {
 #rules-btn {
     background-color: var(--warning-color);
     color: var(--white);
-    font-size: 0.9rem;
+    font-size: 1.1rem;
     padding: 5px 10px;
+    min-width: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 #rules-btn:hover {
@@ -247,50 +252,225 @@ button:disabled {
     accent-color: var(--primary-color);
 }
 
-/* Multiplayer Section */
-.multiplayer-section {
+/* Computer mode difficulty section */
+.computer-mode-section {
     width: 100%;
-    max-width: 800px;
-    margin-top: 20px;
-    border-top: 1px solid #e0e0e0;
-    padding-top: 15px;
-}
-
-.multiplayer-section h3 {
-    text-align: center;
-    color: var(--primary-color);
-    margin-bottom: 12px;
-    font-size: clamp(1.1rem, 3vw, 1.2rem);
-}
-
-.multiplayer-options {
+    max-width: 500px;
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: center;
     gap: 15px;
-    margin-bottom: 15px;
+}
+
+.difficulty-group {
+    flex-direction: row;
+    gap: 12px;
     flex-wrap: wrap;
 }
 
-.option-card {
+.difficulty-label {
     flex: 1;
-    min-width: 280px;
-    background-color: var(--primary-light);
-    padding: 12px;
+    min-width: 200px;
+    padding: 0 !important;
+}
+
+.difficulty-label input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.difficulty-option {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    border: 2px solid #ddd;
     border-radius: 10px;
-    box-shadow: var(--shadow-sm);
-    transition: all var(--transition-normal);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    background-color: #fff;
+    width: 100%;
 }
 
-.option-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+.difficulty-label input[type="radio"]:checked + .difficulty-option {
+    border-color: var(--primary-color);
+    background-color: var(--primary-light);
 }
 
-.option-card h4 {
+.difficulty-label:hover .difficulty-option {
+    border-color: var(--secondary-color);
+    background-color: var(--bg-color);
+}
+
+.diff-title {
+    font-weight: 600;
+    font-size: 1rem;
     color: var(--primary-color);
-    margin-bottom: 10px;
+}
+
+.diff-desc {
+    font-size: 0.8rem;
+    color: #666;
+}
+
+/* Multiplayer Section */
+.multiplayer-section {
+    width: 100%;
+    max-width: 500px;
+    margin-top: 10px;
+    border-top: 1px solid #e0e0e0;
+    padding-top: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Online tabs */
+.online-tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 2px solid #e0e0e0;
+    padding-bottom: 0;
+}
+
+.online-tab {
+    flex: 1;
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #888;
+    cursor: pointer;
+    box-shadow: none;
+    transition: all var(--transition-fast);
+    margin-bottom: -2px;
+}
+
+.online-tab:hover {
+    color: var(--primary-color);
+    transform: none;
+    box-shadow: none;
+}
+
+.online-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+/* Online panels */
+.online-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 8px;
+}
+
+.online-panel .primary-btn {
+    width: 100%;
+    margin-top: 4px;
+}
+
+/* Online format selection */
+.online-format-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.format-label {
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+.online-format-options {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.format-option {
+    flex: 1;
+    min-width: 100px;
+    cursor: pointer;
+    padding: 0 !important;
+}
+
+.format-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.format-option-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 10px 8px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    background: #fff;
+    transition: all var(--transition-fast);
     text-align: center;
-    font-size: clamp(1rem, 2.5vw, 1.1rem);
+    width: 100%;
+}
+
+.format-option input[type="radio"]:checked + .format-option-inner {
+    border-color: var(--primary-color);
+    background-color: var(--primary-light);
+}
+
+.format-option:hover:not(.format-soon) .format-option-inner {
+    border-color: var(--secondary-color);
+    background-color: var(--bg-color);
+}
+
+.format-soon {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.format-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--primary-color);
+}
+
+.format-desc {
+    font-size: 0.75rem;
+    color: #888;
+}
+
+/* Room info after creation */
+.room-created-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--accent-color);
+    text-align: center;
+    margin: 0;
+}
+
+.room-code-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.share-label {
+    font-size: 0.85rem;
+    color: #666;
+    margin: 4px 0 0;
+    text-align: center;
 }
 
 .input-group {
@@ -329,17 +509,11 @@ button:disabled {
     background-color: rgba(67, 170, 139, 0.1);
     border: 1px solid var(--accent-color);
     border-radius: 10px;
-    padding: 12px;
-    margin-top: 15px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     box-shadow: var(--shadow-sm);
-    transition: all var(--transition-normal);
-    text-align: center;
-}
-
-.room-info h4 {
-    color: var(--accent-color);
-    margin-bottom: 10px;
-    font-size: clamp(1rem, 3vw, 1.1rem);
 }
 
 .room-code {
@@ -375,6 +549,265 @@ button:disabled {
 .share-link button {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
+}
+
+/* ── Opponents container ─────────────────────────────────────── */
+.opponents-container {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 8px 8px 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Wrapper: square + fan below */
+.opponent-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Dynamic sizing based on opponent count */
+.opp-count-1 .opponent-wrapper { flex: 0 0 auto; }
+.opp-count-1 .opponent-square { width: 90px; height: 72px; }
+.opp-count-1 .opp-fan-card { width: 28px; height: 38px; }
+
+.opp-count-2 .opponent-wrapper { flex: 0 0 auto; }
+.opp-count-2 .opponent-square { width: 78px; height: 64px; }
+.opp-count-2 .opp-fan-card { width: 24px; height: 33px; }
+
+.opp-count-3 .opponent-wrapper { flex: 0 0 auto; }
+.opp-count-3 .opponent-square { width: 68px; height: 56px; }
+.opp-count-3 .opp-fan-card { width: 20px; height: 28px; }
+
+.opponent-square {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 6px;
+    border: 2px solid rgba(61, 90, 128, 0.25);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    width: 90px;
+    height: 72px;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+    position: relative;
+}
+
+.opponent-square.active-turn {
+    border-color: #43aa8b;
+    box-shadow: 0 0 0 3px rgba(67, 170, 139, 0.4), 0 0 16px rgba(67, 170, 139, 0.35);
+}
+
+/* Team indicators for 2v2 */
+.opponent-square.same-team::before {
+    content: 'Союзник';
+    position: absolute;
+    top: -9px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.55rem;
+    background: #43aa8b;
+    color: #fff;
+    padding: 1px 5px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.opponent-square.enemy-team::before {
+    content: 'Соперник';
+    position: absolute;
+    top: -9px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.55rem;
+    background: #ef5350;
+    color: #fff;
+    padding: 1px 5px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+/* Collected count badge - top right corner of square */
+.opp-collected-badge {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    background: var(--primary-color);
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+/* Emoji avatar in opponent square */
+.opp-emoji {
+    font-size: 1.4rem;
+    line-height: 1;
+    margin-bottom: 2px;
+}
+
+/* Opponent name at the bottom of the square */
+.opponent-sq-name {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+    line-height: 1.2;
+}
+
+.opponent-sq-name.waiting {
+    font-size: 0.6rem;
+    color: #aaa;
+    font-style: italic;
+}
+
+/* Fan of card backs below the square */
+.opp-card-fan {
+    position: relative;
+    height: 42px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-width: 60px;
+}
+
+.opp-fan-card {
+    position: absolute;
+    width: 28px;
+    height: 38px;
+    border-radius: 3px;
+    background: url('/images/cards/card_back.png') center/cover no-repeat;
+    border: none;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    transform-origin: 50% 100%;
+    top: 0;
+    left: 50%;
+    margin-left: -14px;
+}
+
+/* ── Player bottom area ──────────────────────────────────────── */
+.player-bottom-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px 0;
+}
+
+.player-bottom-header h3 {
+    font-size: 0.9rem;
+    color: var(--primary-color);
+    margin: 0;
+}
+
+.collected-badge {
+    font-size: 0.8rem;
+    color: #555;
+    background: rgba(61, 90, 128, 0.1);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+/* ── Results dynamic ─────────────────────────────────────────── */
+
+.results-dynamic {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    table-layout: auto;
+}
+
+.results-table th {
+    background: var(--primary-color);
+    color: #fff;
+    padding: 5px 4px;
+    text-align: center;
+    font-weight: 600;
+    white-space: nowrap;
+    font-size: 0.75rem;
+}
+
+.results-table td {
+    padding: 5px 4px;
+    border-bottom: 1px solid #eee;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.results-table tr:nth-child(even) td {
+    background: var(--bg-color);
+}
+
+.results-table tr.results-winner td {
+    background: rgba(67, 170, 139, 0.15);
+    font-weight: 600;
+}
+
+.results-table tr.results-you td {
+    font-style: italic;
+}
+
+.yes-badge {
+    display: inline-block;
+    background: #43aa8b;
+    color: #fff;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 0.75rem;
+}
+
+.no-badge {
+    color: #aaa;
+    font-size: 0.8rem;
+}
+
+.game-winner-block {
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 12px 0;
+    color: var(--primary-color);
+}
+
+/* Waiting banner shown while not all players have joined */
+.waiting-banner {
+    background: rgba(61, 90, 128, 0.08);
+    border: 1px dashed var(--primary-color);
+    border-radius: 10px;
+    padding: 12px 16px;
+    text-align: center;
+    color: var(--primary-color);
+    font-size: 0.95rem;
+}
+
+.bottom-player {
+    padding: 4px 0 8px;
 }
 
 .waiting-message {
@@ -442,7 +875,7 @@ button:disabled {
 /* Нижний игрок — абсолютно у нижнего края, карты наполовину скрыты */
 .bottom-player {
     position: absolute;
-    bottom: calc(var(--card-height) * 1.4375 * -0.5);
+    bottom: calc(var(--card-height) * 1.4375 * -0.45);
     left: 0;
     right: 0;
     z-index: 15;
@@ -611,13 +1044,14 @@ button:disabled {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 2px;
+    gap: 4px;
     margin: 5px 0;
 }
 
 .last-taken-cards .card {
-    transform: scale(0.5);
-    margin: -10px;
+    transform: scale(0.55);
+    transform-origin: center;
+    margin: -8px -4px;
 }
 
 .last-taken-by {
@@ -710,16 +1144,25 @@ button:disabled {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 6px;
+    padding: 0;
     font-weight: bold;
     border: 1px solid rgba(0, 0, 0, 0.1);
-    overflow: hidden; /* Предотвращает выход содержимого за границы карты */
+    overflow: hidden;
+}
+
+.card-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: inherit;
+    pointer-events: none;
+    user-select: none;
 }
 
 .card.back {
-    background: linear-gradient(45deg, var(--primary-color) 25%, var(--primary-dark) 25%, var(--primary-dark) 50%, var(--primary-color) 50%, var(--primary-color) 75%, var(--primary-dark) 75%, var(--primary-dark) 100%);
-    background-size: 20px 20px;
+    padding: 0;
     border: 2px solid #293f5c;
+    overflow: hidden;
 }
 
 .card.selected {
@@ -809,6 +1252,61 @@ button:disabled {
     }
 }
 
+/* Lobby player list */
+.lobby-player-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 10px 0;
+}
+
+.lobby-player {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.lobby-player-icon {
+    font-size: 1rem;
+    width: 20px;
+    text-align: center;
+}
+
+.lobby-player-connected {
+    background: rgba(67, 170, 139, 0.15);
+    color: #2d8a6e;
+}
+
+.lobby-player-waiting {
+    background: rgba(61, 90, 128, 0.08);
+    color: #999;
+    font-style: italic;
+}
+
+.lobby-kick-btn {
+    margin-left: auto;
+    background: #ef5350;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    width: 22px;
+    height: 22px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.lobby-kick-btn:hover {
+    background: #d32f2f;
+}
+
 /* Game Results */
 #game-results {
     background-color: var(--white);
@@ -816,6 +1314,7 @@ button:disabled {
     padding: 15px;
     margin: 10px;
     box-shadow: var(--shadow-lg);
+    overflow-x: hidden;
 }
 
 .results-container {
@@ -1124,7 +1623,7 @@ button:disabled {
     /* Еще больше поднимаем карты на столе */
     .table-cards {
         padding: 5px 5px 70px;
-        margin-top: 25px; /* Добавить это свойство */
+        margin-top: 25px;
     }
 
     /* Уменьшаем размер карт в блоке "Последняя взятка" */
@@ -1132,6 +1631,17 @@ button:disabled {
         transform: scale(0.4);
         margin: -14px;
     }
+
+    /* Opponent squares smaller on small screens */
+    .opp-count-1 .opponent-square { width: 80px; height: 64px; }
+    .opp-count-2 .opponent-square { width: 68px; height: 56px; }
+    .opp-count-2 .opp-fan-card { width: 20px; height: 28px; }
+    .opp-count-3 .opponent-square { width: 58px; height: 48px; }
+    .opp-count-3 .opp-fan-card { width: 16px; height: 22px; }
+    .opp-count-3 .opp-card-fan { height: 28px; }
+    .opponent-sq-name { font-size: 0.6rem; }
+    .opp-collected-badge { font-size: 0.5rem; min-width: 15px; height: 15px; }
+    .opponents-container { gap: 6px; padding: 4px 4px 0; }
 }
 
 /* Добавляем HTML-код для контейнера кнопок */
@@ -1142,54 +1652,101 @@ button:disabled {
     width: 100%;
 }
 
-/* Анимация фейерверка */
-@keyframes firework {
-    0% { transform: translate(var(--x), var(--y)) scale(0); opacity: 1; }
-    50% { transform: translate(var(--x), var(--y)) scale(1); opacity: 0.8; }
-    100% { transform: translate(var(--x), var(--y)) scale(1.2); opacity: 0; }
-}
-
-.firework {
-    position: absolute;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    box-shadow:
-        0 0 3px 1px #ff4444,
-        0 0 6px 2px #ffaa00,
-        0 0 9px 3px #ffff00;
-    animation: firework 0.8s ease-out forwards;
-}
-
+/* ── Winner celebration ─────────────────────────────────────── */
 .winner-container {
     position: relative;
-    background-color: rgba(67, 170, 139, 0.2);
-    border-radius: 10px;
-    padding: 15px;
+    border-radius: 12px;
+    padding: 20px 15px;
     text-align: center;
     overflow: hidden;
     margin-bottom: 20px;
+    background: linear-gradient(135deg, rgba(46,213,115,0.15), rgba(30,144,255,0.15), rgba(255,71,87,0.1));
+    border: 2px solid rgba(46,213,115,0.3);
+}
+
+.winner-glow {
+    position: absolute;
+    inset: -50%;
+    background: conic-gradient(from 0deg, transparent, rgba(255,215,0,0.15), transparent, rgba(46,213,115,0.15), transparent);
+    animation: winner-spin 4s linear infinite;
+    z-index: 0;
+}
+
+@keyframes winner-spin {
+    to { transform: rotate(360deg); }
 }
 
 .winner-text {
-    color: #43aa8b;
-    font-size: 1.5rem;
-    font-weight: bold;
     position: relative;
-    z-index: 5;
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+    z-index: 2;
+    font-size: 1.3rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #2ed573, #1e90ff, #ffa502, #ff4757);
+    background-size: 300% 300%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: winner-gradient 3s ease infinite, winner-pulse 1.5s ease-in-out infinite;
 }
 
-.winner-emoji {
-    display: inline-block;
-    font-size: 1.6rem;
-    margin: 0 5px;
-    animation: bounce 0.6s ease infinite alternate;
+@keyframes winner-gradient {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
 }
 
-@keyframes bounce {
-    from { transform: translateY(0); }
-    to { transform: translateY(-6px); }
+@keyframes winner-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.confetti-container {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 1;
+}
+
+.confetti-piece {
+    position: absolute;
+    top: -10px;
+    animation: confetti-fall linear forwards;
+    will-change: transform;
+}
+
+.confetti-rect {
+    width: 8px;
+    height: 14px;
+    background: var(--color);
+    border-radius: 2px;
+}
+
+.confetti-circle {
+    width: 8px;
+    height: 8px;
+    background: var(--color);
+    border-radius: 50%;
+}
+
+.confetti-strip {
+    width: 3px;
+    height: 16px;
+    background: var(--color);
+    border-radius: 1px;
+}
+
+@keyframes confetti-fall {
+    0% {
+        transform: translateY(-10px) translateX(0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
+    80% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(180px) translateX(var(--drift)) rotate(var(--rot)) scale(0.5);
+        opacity: 0;
+    }
 }
 
 /* Стили для отображения общего счета */

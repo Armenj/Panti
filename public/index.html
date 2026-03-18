@@ -19,7 +19,7 @@
         <h1>Одиннадцать</h1>
         <div class="game-info">
             <span id="deck-count">Колода: 52</span>
-            <button id="rules-btn">Правила</button>
+            <button id="rules-btn" title="Правила игры"><i class="fa-solid fa-circle-info"></i></button>
             <button id="restart-btn">Выйти</button>
         </div>
     </header>
@@ -35,62 +35,108 @@
                         1 на 1 (против компьютера)
                     </label>
                     <label>
-                        <input type="radio" name="game-mode" value="player-vs-player">
-                        1 на 1 (два игрока)
-                    </label>
-                    <label>
-                        <input type="radio" name="game-mode" value="three-players">
-                        3 игрока
-                    </label>
-                    <label>
-                        <input type="radio" name="game-mode" value="teams">
-                        2 на 2 (команды)
+                        <input type="radio" name="game-mode" value="online">
+                        Онлайн игра
                     </label>
                 </div>
             </div>
 
-            <button id="start-game-btn" class="primary-btn">Начать игру</button>
-
-            <!-- Блок онлайн-игры -->
-            <div class="multiplayer-section">
-                <h3>Онлайн-игра</h3>
-                <div class="multiplayer-options">
-                    <!-- Создание новой игры -->
-                    <div class="option-card">
-                        <h4>Создать онлайн-игру</h4>
-                        <div class="input-group">
-                            <label for="create-name">Ваше имя:</label>
-                            <input type="text" id="create-name" placeholder="Введите имя">
-                        </div>
-                        <button id="create-game-btn" class="secondary-btn">Создать игру</button>
-                    </div>
-
-                    <!-- Присоединение к игре -->
-                    <div class="option-card">
-                        <h4>Присоединиться к игре</h4>
-                        <div class="input-group">
-                            <label for="join-name">Ваше имя:</label>
-                            <input type="text" id="join-name" placeholder="Введите имя">
-                        </div>
-                        <div class="input-group">
-                            <label for="room-id">Код комнаты:</label>
-                            <input type="text" id="room-id" placeholder="Например, ABC123">
-                        </div>
-                        <button id="join-game-btn" class="secondary-btn">Присоединиться</button>
+            <!-- Блок настроек для игры против компьютера -->
+            <div id="computer-mode-options" class="computer-mode-section">
+                <div class="option-group">
+                    <h3>Сложность:</h3>
+                    <div class="radio-group difficulty-group">
+                        <label class="difficulty-label">
+                            <input type="radio" name="difficulty" value="standard" checked>
+                            <span class="difficulty-option">
+                                <span class="diff-title">Стандарт</span>
+                                <span class="diff-desc">Компьютер играет стратегически</span>
+                            </span>
+                        </label>
+                        <label class="difficulty-label">
+                            <input type="radio" name="difficulty" value="hard">
+                            <span class="difficulty-option">
+                                <span class="diff-title">Сложный</span>
+                                <span class="diff-desc">Компьютер агрессивно охотится за ♣2, ♦10 и крестями</span>
+                            </span>
+                        </label>
                     </div>
                 </div>
+                <button id="start-game-btn" class="primary-btn">Начать игру</button>
+            </div>
 
-                <!-- Информация о созданной комнате -->
+            <!-- Блок онлайн-игры (скрыт по умолчанию) -->
+            <div id="online-section" class="multiplayer-section hidden">
+
+                <!-- Вкладки: Создать / Войти -->
+                <div id="online-action-tabs" class="online-tabs">
+                    <button class="online-tab active" data-tab="create">Создать игру</button>
+                    <button class="online-tab" data-tab="join">Войти по коду</button>
+                </div>
+
+                <!-- Панель создания игры -->
+                <div id="create-panel" class="online-panel">
+                    <div class="input-group">
+                        <label for="create-name">Ваше имя:</label>
+                        <input type="text" id="create-name" placeholder="Введите имя" maxlength="20">
+                    </div>
+                    <div class="online-format-section">
+                        <p class="format-label">Формат игры:</p>
+                        <div class="online-format-options">
+                            <label class="format-option">
+                                <input type="radio" name="online-format" value="1v1" checked>
+                                <span class="format-option-inner">
+                                    <span class="format-title">1 на 1</span>
+                                    <span class="format-desc">Два игрока</span>
+                                </span>
+                            </label>
+                            <label class="format-option">
+                                <input type="radio" name="online-format" value="3p">
+                                <span class="format-option-inner">
+                                    <span class="format-title">3 игрока</span>
+                                    <span class="format-desc">Все против всех</span>
+                                </span>
+                            </label>
+                            <label class="format-option">
+                                <input type="radio" name="online-format" value="2v2">
+                                <span class="format-option-inner">
+                                    <span class="format-title">2 на 2</span>
+                                    <span class="format-desc">Командная игра</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                    <button id="create-game-btn" class="primary-btn">Создать игру</button>
+                </div>
+
+                <!-- Панель входа по коду (скрыта по умолчанию) -->
+                <div id="join-panel" class="online-panel hidden">
+                    <div class="input-group">
+                        <label for="join-name">Ваше имя:</label>
+                        <input type="text" id="join-name" placeholder="Введите имя" maxlength="20">
+                    </div>
+                    <div class="input-group">
+                        <label for="room-id">Код комнаты:</label>
+                        <input type="text" id="room-id" placeholder="Например, 123" maxlength="3" inputmode="numeric" pattern="[0-9]*">
+                    </div>
+                    <button id="join-game-btn" class="primary-btn">Войти в игру</button>
+                </div>
+
+                <!-- Информация о созданной комнате (скрыта до создания) -->
                 <div id="room-info" class="room-info hidden">
-                    <h4>Ваша игра создана!</h4>
-                    <p>Код комнаты: <span id="display-room-id" class="room-code"></span></p>
-                    <p>Отправьте эту ссылку другу:</p>
+                    <p class="room-created-title">Игра создана!</p>
+                    <div class="room-code-row">
+                        <span>Код:</span>
+                        <strong id="display-room-id" class="room-code"></strong>
+                        <button id="copy-code-btn" class="small-btn">Скопировать код</button>
+                    </div>
+                    <p class="share-label">Или отправьте ссылку другу:</p>
                     <div class="share-link">
                         <input type="text" id="invite-link" readonly>
                         <button id="copy-link-btn" class="small-btn">Копировать</button>
                     </div>
-                    <p class="waiting-message">Ожидание второго игрока...</p>
-                    <button id="refresh-status-btn" class="secondary-btn">Обновить статус</button>
+                    <p class="waiting-message">⏳ Ожидание игрока...</p>
+                    <button id="refresh-status-btn" class="secondary-btn small-btn">Обновить</button>
                 </div>
             </div>
         </div>
@@ -98,27 +144,8 @@
 
     <div id="game-board" class="game-section hidden">
         <div class="game-layout">
-            <!-- Верхний игрок (противник) -->
-            <div id="opponent-area" class="player-area top-player">
-                <h3 id="opponent-name">Соперник</h3>
-                <div id="opponent-cards" class="hand"></div>
-                <div class="player-stats">
-                    <div id="opponent-collected" class="collected-cards">
-                        <span class="collected-count">0</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Левый игрок (для режима 3-4 игрока) -->
-            <div id="left-player-area" class="player-area left-player hidden">
-                <h3 id="left-player-name">Игрок 3</h3>
-                <div id="left-player-cards" class="hand"></div>
-                <div class="player-stats">
-                    <div id="left-player-collected" class="collected-cards">
-                        <span class="collected-count">0</span>
-                    </div>
-                </div>
-            </div>
+            <!-- Динамический контейнер противников (заполняется JS) -->
+            <div id="opponents-container" class="opponents-container"></div>
 
             <!-- Игровой стол в центре -->
             <div class="game-table">
@@ -131,22 +158,11 @@
                 </div>
             </div>
 
-            <!-- Правый игрок (для режима 4 игрока) -->
-            <div id="right-player-area" class="player-area right-player hidden">
-                <h3 id="right-player-name">Игрок 4</h3>
-                <div id="right-player-cards" class="hand"></div>
-                <div class="player-stats">
-                    <div id="right-player-collected" class="collected-cards">
-                        <span class="collected-count">0</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Нижний игрок (игрок) -->
+            <!-- Нижний игрок (всегда текущий пользователь) -->
             <div id="player-area" class="player-area bottom-player active">
-                <h3 id="player-name">Вы</h3>
-                <div class="player-stats">
-                    <div id="player-collected" class="collected-cards">
+                <div class="player-bottom-header">
+                    <h3 id="player-name">Вы</h3>
+                    <div id="player-collected" class="collected-badge">
                         <span class="collected-count">0</span>
                     </div>
                 </div>
@@ -156,7 +172,6 @@
 
         <div class="game-controls">
             <div id="game-message" class="game-message"></div>
-            <!-- Добавлен контейнер для кнопок -->
             <div class="button-container">
                 <button id="discard-card-btn" class="action-btn">Сбросить</button>
                 <button id="confirm-selection-btn" class="action-btn" disabled>Подтвердить выбор</button>
@@ -165,34 +180,11 @@
     </div>
 
     <div id="game-results" class="game-section hidden">
-        <h2>Результаты игры</h2>
-        <div class="results-container">
-            <div class="player-results">
-                <h3 id="player-result-name">Вы</h3>
-                <div class="result-details">
-                    <p>Карт: <span id="player-card-count">0</span></p>
-                    <p>Крестовых карт: <span id="player-clubs-count">0</span></p>
-                    <p>♣2: <span id="player-club2">Нет</span></p>
-                    <p>♦10: <span id="player-diamond10">Нет</span></p>
-                    <p>Дополнительные очки: <span id="player-bonus">0</span></p>
-                    <p class="total-score">Итого: <span id="player-total-score">0</span></p>
-                </div>
-            </div>
-
-            <div class="player-results">
-                <h3 id="opponent-result-name">Соперник</h3>
-                <div class="result-details">
-                    <p>Карт: <span id="opponent-card-count">0</span></p>
-                    <p>Крестовых карт: <span id="opponent-clubs-count">0</span></p>
-                    <p>♣2: <span id="opponent-club2">Нет</span></p>
-                    <p>♦10: <span id="opponent-diamond10">Нет</span></p>
-                    <p>Дополнительные очки: <span id="opponent-bonus">0</span></p>
-                    <p class="total-score">Итого: <span id="opponent-total-score">0</span></p>
-                </div>
-            </div>
+        <h2>Результаты раунда</h2>
+        <div id="results-dynamic" class="results-dynamic">
+            <!-- Generated dynamically by JS -->
         </div>
-
-        <div id="game-winner"></div>
+        <div id="game-winner" class="game-winner-block"></div>
         <button id="new-game-btn" class="primary-btn">Новая игра</button>
     </div>
 
@@ -253,5 +245,30 @@
 <script src="/socket.io/socket.io.js"></script>
 <script src="js/client.js"></script>
 <script src="js/main.js"></script>
+<script>
+// Предзагрузка всех карточных изображений
+(function() {
+    const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
+    const values = ['ace', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king'];
+    const images = [];
+    suits.forEach(suit => {
+        values.forEach(val => {
+            const img = new Image();
+            img.src = `/images/cards/${val}_of_${suit}.png`;
+            images.push(img);
+        });
+    });
+    const back = new Image();
+    back.src = '/images/cards/card_back.png';
+    images.push(back);
+})();
+</script>
+<script
+    src="https://api.bestaibots.ru/widget.js"
+    data-token="785a7138bafe1b4f0d4d137a8d971a416b82c33ffbee1b5ee454db8c1df037bd"
+    data-title="Помощник Panti"
+    data-welcome="Привет! Я помощник по игре Panti. Спрашивай о правилах, картах и механиках!"
+    data-color="#e11d48">
+  </script>
 </body>
 </html>

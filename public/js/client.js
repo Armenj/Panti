@@ -62,6 +62,12 @@ class GameClient {
             if (typeof this.onSessionRestored === 'function') this.onSessionRestored(data);
         });
 
+        // Игрок присоединился (ожидание остальных)
+        this.socket.on('player-joined', (data) => {
+            this.gameState = data.gameState;
+            if (typeof this.onPlayerJoined === 'function') this.onPlayerJoined(data);
+        });
+
         // Переподключение
         this.socket.on('player-reconnected', (data) => {
             this.gameState = data.gameState;
@@ -77,6 +83,18 @@ class GameClient {
         this.socket.on('new-round-started', (gameState) => {
             this.gameState = gameState;
             if (typeof this.onNewRoundStarted === 'function') this.onNewRoundStarted(gameState);
+        });
+
+        // Кик из комнаты
+        this.socket.on('kicked-from-room', (data) => {
+            this.clearSession();
+            if (typeof this.onKicked === 'function') this.onKicked(data);
+        });
+
+        // Обновление лобби (после кика/удаления слота)
+        this.socket.on('lobby-updated', (data) => {
+            this.gameState = data.gameState;
+            if (typeof this.onLobbyUpdated === 'function') this.onLobbyUpdated(data);
         });
 
         // Ошибки
@@ -95,8 +113,8 @@ class GameClient {
     }
 
     // Методы отправки данных на сервер
-    createRoom(playerName) {
-        this.socket.emit('create-room', playerName);
+    createRoom(playerName, format) {
+        this.socket.emit('create-room', { playerName, format: format || '1v1' });
     }
 
     joinRoom(roomId, playerName) {
@@ -121,6 +139,18 @@ class GameClient {
     finishRound() {
         if (this.roomId) {
             this.socket.emit('finish-round', this.roomId);
+        }
+    }
+
+    kickPlayer(playerIndex) {
+        if (this.roomId) {
+            this.socket.emit('kick-player', { roomId: this.roomId, playerIndex });
+        }
+    }
+
+    forceStartGame() {
+        if (this.roomId) {
+            this.socket.emit('force-start-game', this.roomId);
         }
     }
 
@@ -183,6 +213,30 @@ class GameClient {
 
     getMyPlayer() {
         return this.gameState && this.gameState.players[this.playerIndex];
+    }
+
+    getOpponentPlayer() {
+        if (!this.gameState) return null;
+        const opponentIndex = this.playerIndex === 0 ? 1 : 0;
+        return this.gameState.players[opponentIndex];
+    }
+
+    checkConnectionAndReconnect() {
+        if (!this.roomId || !this.playerId) return;
+
+        const sessionData = localStorage.getItem('gameSession');
+        if (!sessionData) return;
+
+        try {
+            const session = JSON.parse(sessionData);
+            this.socket.emit('force-check-game-status', {
+                roomId: session.roomId,
+                playerId: session.playerId,
+                playerIndex: session.playerIndex || this.playerIndex
+            });
+        } catch (e) {
+            console.warn('Ошибка при попытке переподключения:', e);
+        }
     }
 }
 

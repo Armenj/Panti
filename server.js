@@ -67,10 +67,10 @@ function deleteRoomFile(roomId) {
 
 // Функция для генерации уникального ID комнаты
 function generateUniqueRoomId() {
-    // Генерируем короткий ID (6 символов) и проверяем, что он уникален
+    // Генерируем короткий ID (3 цифры) и проверяем, что он уникален
     let roomId;
     do {
-        roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        roomId = String(Math.floor(100 + Math.random() * 900));
     } while (rooms.has(roomId) || fs.existsSync(path.join(ROOMS_STORAGE_PATH, `${roomId}.json`)));
 
     return roomId;
@@ -103,31 +103,39 @@ function createDeck() {
 }
 
 // Функция для инициализации новой игры
-function initializeGame() {
+function initializeGame(numPlayers = 2, format = '1v1') {
     const gameState = {
         deck: createDeck(),
         tableCards: [],
-        players: [
-            { id: null, name: 'Игрок 1', hand: [], collected: [], score: 0, bonusPoints: 0, connected: false },
-            { id: null, name: 'Игрок 2', hand: [], collected: [], score: 0, bonusPoints: 0, connected: false }
-        ],
+        players: [],
+        numPlayers,
+        format,
         currentPlayerIndex: 0,
         lastPlayerWhoTook: null,
         gameStarted: false,
         gameEnded: false,
         lastTakenCards: [],
         lastTakenBy: null,
-        totalScores: [0, 0], // Добавляем общий счет игроков
-        roundNumber: 1, // Добавляем номер раунда
-        targetScore: 21 // Целевой счет для победы в матче
+        totalScores: new Array(numPlayers).fill(0),
+        roundNumber: 1,
+        targetScore: 21
     };
 
-    // Раздаем начальные карты
+    for (let i = 0; i < numPlayers; i++) {
+        gameState.players.push({
+            id: null,
+            name: `Игрок ${i + 1}`,
+            hand: [],
+            collected: [],
+            score: 0,
+            bonusPoints: 0,
+            connected: false
+        });
+    }
+
     for (const player of gameState.players) {
         player.hand = drawCards(gameState.deck, 4);
     }
-
-    // Выкладываем 4 карты на стол
     gameState.tableCards = drawCards(gameState.deck, 4);
 
     return gameState;
@@ -147,25 +155,24 @@ io.on('connection', (socket) => {
     console.log('Новое соединение:', socket.id);
 
     // Создание новой игровой комнаты
-    socket.on('create-room', (playerName) => {
-        const roomId = generateUniqueRoomId(); // Используем более надежный метод
-        const gameState = initializeGame();
+    socket.on('create-room', (data) => {
+        const playerName = typeof data === 'string' ? data : (data && data.playerName ? data.playerName : 'Игрок 1');
+        const format = (typeof data === 'object' && data && data.format) ? data.format : '1v1';
+        const numPlayers = format === '3p' ? 3 : format === '2v2' ? 4 : 2;
 
-        // Назначаем первого игрока
+        const roomId = generateUniqueRoomId();
+        const gameState = initializeGame(numPlayers, format);
+
         gameState.players[0].id = socket.id;
-        gameState.players[0].name = playerName || 'Игрок 1';
+        gameState.players[0].name = playerName;
         gameState.players[0].connected = true;
 
         rooms.set(roomId, gameState);
-
-        // Сохраняем комнату в файл
         saveRoomToFile(roomId, gameState);
 
-        // Сохраняем ID комнаты в сокете
         socket.join(roomId);
         socket.roomId = roomId;
 
-        // Отправляем инфо о комнате
         socket.emit('room-created', {
             roomId,
             gameState,
@@ -173,7 +180,7 @@ io.on('connection', (socket) => {
             playerIndex: 0
         });
 
-        console.log(`Создана комната: ${roomId}`);
+        console.log(`Создана комната: ${roomId}, формат: ${format}, игроков: ${numPlayers}`);
     });
 
     // Запуск нового раунда
@@ -226,28 +233,23 @@ io.on('connection', (socket) => {
         gameState.roundNumber++;
 
         // Сохраняем имена игроков и общий счет
-        const playerNames = gameState.players.map(p => p.name);
-        const totalScores = [...gameState.totalScores];
-        const playerIds = gameState.players.map(p => p.id);
-        const playerConnected = gameState.players.map(p => p.connected);
+        const numPlayers = gameState.numPlayers || 2;
+        const format = gameState.format || '1v1';
+        const playerInfo = gameState.players.map(p => ({ id: p.id, name: p.name, connected: p.connected }));
+        const totalScores = [...(gameState.totalScores || new Array(numPlayers).fill(0))];
         const roundNumber = gameState.roundNumber;
 
-        // Создаем новое состояние игры
-        const newGameState = initializeGame();
+        const newGameState = initializeGame(numPlayers, format);
 
-        // Восстанавливаем информацию об игроках
-        newGameState.players[0].id = playerIds[0];
-        newGameState.players[1].id = playerIds[1];
-        newGameState.players[0].name = playerNames[0];
-        newGameState.players[1].name = playerNames[1];
-        newGameState.players[0].connected = playerConnected[0];
-        newGameState.players[1].connected = playerConnected[1];
+        playerInfo.forEach((info, i) => {
+            newGameState.players[i].id = info.id;
+            newGameState.players[i].name = info.name;
+            newGameState.players[i].connected = info.connected;
+        });
         newGameState.totalScores = totalScores;
         newGameState.roundNumber = roundNumber;
         newGameState.gameStarted = true;
-
-        // Устанавливаем случайно первого игрока
-        newGameState.currentPlayerIndex = Math.floor(Math.random() * 2);
+        newGameState.currentPlayerIndex = Math.floor(Math.random() * numPlayers);
 
         // Обновляем состояние комнаты
         rooms.set(roomId, newGameState);
@@ -264,14 +266,11 @@ io.on('connection', (socket) => {
         const { roomId, playerName } = data;
         let gameState;
 
-        // Проверяем, существует ли комната в памяти
         if (rooms.has(roomId)) {
             gameState = rooms.get(roomId);
         } else {
-            // Если комнаты нет в памяти, пробуем загрузить из файла
             gameState = loadRoomFromFile(roomId);
             if (gameState) {
-                // Если комната загружена из файла, добавляем ее в память
                 rooms.set(roomId, gameState);
                 console.log(`Комната ${roomId} загружена из файла`);
             } else {
@@ -280,52 +279,161 @@ io.on('connection', (socket) => {
             }
         }
 
-        if (gameState.players[1].connected && gameState.players[1].id !== socket.id) {
+        const numPlayers = gameState.numPlayers || 2;
+
+        // Find first slot with no id or disconnected player
+        let slotIndex = gameState.players.findIndex(p => !p.id);
+        if (slotIndex === -1) {
+            slotIndex = gameState.players.findIndex(p => p.id && !p.connected);
+        }
+
+        if (slotIndex === -1) {
             socket.emit('error', { message: 'Комната уже заполнена' });
             return;
         }
 
-        // Если второй игрок ранее был подключен и потом отключился
-        if (gameState.players[1].id && !gameState.players[1].connected) {
-            gameState.players[1].id = socket.id;
-            gameState.players[1].connected = true;
-        }
-        // Если это новое подключение
-        else if (!gameState.players[1].id) {
-            gameState.players[1].id = socket.id;
-            gameState.players[1].name = playerName || 'Игрок 2';
-            gameState.players[1].connected = true;
-        }
+        gameState.players[slotIndex].id = socket.id;
+        gameState.players[slotIndex].name = playerName || `Игрок ${slotIndex + 1}`;
+        gameState.players[slotIndex].connected = true;
 
-        // Присоединяем к комнате
         socket.join(roomId);
         socket.roomId = roomId;
 
-        // Если игра еще не начата, устанавливаем случайно первого игрока
-        if (!gameState.gameStarted) {
-            gameState.currentPlayerIndex = Math.floor(Math.random() * 2);
+        const connectedCount = gameState.players.filter(p => p.connected).length;
+        const allConnected = connectedCount === numPlayers;
+
+        if (allConnected && !gameState.gameStarted) {
+            gameState.currentPlayerIndex = Math.floor(Math.random() * numPlayers);
             gameState.gameStarted = true;
         }
 
-        // Обновляем состояние комнаты
         rooms.set(roomId, gameState);
-        saveRoomToFile(roomId, gameState); // Сохраняем обновленное состояние
+        saveRoomToFile(roomId, gameState);
 
-        // Определяем индекс игрока
-        const playerIndex = gameState.players.findIndex(p => p.id === socket.id);
-
-        // Оповещаем присоединившегося игрока
         socket.emit('room-joined', {
             roomId,
             gameState,
             playerId: socket.id,
-            playerIndex
+            playerIndex: slotIndex
         });
 
-        // Оповещаем обоих игроков о начале/продолжении игры
-        io.to(roomId).emit('game-start', gameState);
+        if (allConnected) {
+            io.to(roomId).emit('game-start', gameState);
+        } else {
+            // Notify others that someone joined (game not started yet)
+            socket.to(roomId).emit('player-joined', {
+                gameState,
+                joinedPlayerIndex: slotIndex,
+                waitingFor: numPlayers - connectedCount
+            });
+        }
 
-        console.log(`Игрок присоединился к комнате: ${roomId}`);
+        console.log(`Игрок присоединился к комнате: ${roomId}, слот: ${slotIndex}, подключено: ${connectedCount}/${numPlayers}`);
+    });
+
+    // Кик игрока из лобби (только для создателя комнаты, до начала игры)
+    socket.on('kick-player', (data) => {
+        const { roomId, playerIndex } = data;
+        if (!rooms.has(roomId)) {
+            socket.emit('error', { message: 'Комната не найдена' });
+            return;
+        }
+
+        const gameState = rooms.get(roomId);
+
+        // Только создатель (playerIndex 0) может кикать
+        if (gameState.players[0].id !== socket.id) {
+            socket.emit('error', { message: 'Только создатель может исключать игроков' });
+            return;
+        }
+
+        // Нельзя кикать после старта игры
+        if (gameState.gameStarted) {
+            socket.emit('error', { message: 'Нельзя исключить игрока после начала игры' });
+            return;
+        }
+
+        // Нельзя кикнуть самого себя
+        if (playerIndex === 0) {
+            socket.emit('error', { message: 'Нельзя исключить себя' });
+            return;
+        }
+
+        const kickedPlayer = gameState.players[playerIndex];
+        if (!kickedPlayer) return;
+
+        // Если игрок подключён — кикаем и очищаем слот
+        if (kickedPlayer.id) {
+            const kickedSocketId = kickedPlayer.id;
+            io.to(kickedSocketId).emit('kicked-from-room', { message: 'Вы были исключены из комнаты' });
+            const kickedSocket = io.sockets.sockets.get(kickedSocketId);
+            if (kickedSocket) {
+                kickedSocket.leave(roomId);
+                kickedSocket.roomId = null;
+            }
+        }
+
+        // Удаляем слот из массива игроков и уменьшаем numPlayers
+        gameState.players.splice(playerIndex, 1);
+        gameState.numPlayers = gameState.players.length;
+
+        // Обновляем формат
+        if (gameState.numPlayers === 2) gameState.format = '1v1';
+        else if (gameState.numPlayers === 3) gameState.format = '3p';
+
+        rooms.set(roomId, gameState);
+        saveRoomToFile(roomId, gameState);
+
+        // Обновляем лобби для оставшихся
+        const connectedCount = gameState.players.filter(p => p.connected).length;
+        io.to(roomId).emit('lobby-updated', {
+            gameState,
+            waitingFor: gameState.numPlayers - connectedCount
+        });
+
+        console.log(`Слот ${playerIndex} удалён из комнаты ${roomId}, осталось ${gameState.numPlayers} слотов`);
+    });
+
+    // Принудительный запуск игры создателем (когда есть хотя бы 2 подключённых)
+    socket.on('force-start-game', (roomId) => {
+        if (!rooms.has(roomId)) {
+            socket.emit('error', { message: 'Комната не найдена' });
+            return;
+        }
+
+        const gameState = rooms.get(roomId);
+
+        if (gameState.players[0].id !== socket.id) {
+            socket.emit('error', { message: 'Только создатель может запустить игру' });
+            return;
+        }
+
+        if (gameState.gameStarted) {
+            socket.emit('error', { message: 'Игра уже запущена' });
+            return;
+        }
+
+        const connectedCount = gameState.players.filter(p => p.connected).length;
+        if (connectedCount < 2) {
+            socket.emit('error', { message: 'Нужно минимум 2 игрока' });
+            return;
+        }
+
+        // Удаляем пустые слоты
+        gameState.players = gameState.players.filter(p => p.id && p.connected);
+        gameState.numPlayers = gameState.players.length;
+
+        if (gameState.numPlayers === 2) gameState.format = '1v1';
+        else if (gameState.numPlayers === 3) gameState.format = '3p';
+
+        gameState.currentPlayerIndex = Math.floor(Math.random() * gameState.numPlayers);
+        gameState.gameStarted = true;
+
+        rooms.set(roomId, gameState);
+        saveRoomToFile(roomId, gameState);
+
+        io.to(roomId).emit('game-start', gameState);
+        console.log(`Игра принудительно запущена в комнате ${roomId} с ${gameState.numPlayers} игроками`);
     });
 
     // Обработка хода игрока
@@ -371,7 +479,7 @@ io.on('connection', (socket) => {
             endGame(gameState);
         } else {
             // Передаем ход другому игроку
-            gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % 2;
+            gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % (gameState.numPlayers || 2);
         }
 
         // Обновляем состояние комнаты
@@ -703,8 +811,8 @@ function checkGameEnd(gameState) {
 
 function endGame(gameState) {
     gameState.gameEnded = true;
+    const numPlayers = gameState.numPlayers || 2;
 
-    // Последний игрок, взявший карты, забирает оставшиеся карты стола
     if (gameState.lastPlayerWhoTook && gameState.tableCards.length > 0) {
         const playerIndex = gameState.players.findIndex(p => p === gameState.lastPlayerWhoTook);
         if (playerIndex !== -1) {
@@ -713,74 +821,81 @@ function endGame(gameState) {
         }
     }
 
-    // Подсчет очков
     calculateScores(gameState);
 
-    // Обновляем общий счет
-    gameState.totalScores[0] += gameState.players[0].score;
-    gameState.totalScores[1] += gameState.players[1].score;
-
-    // Проверяем, победил ли кто-то в матче
-    gameState.matchWinner = null;
-    if (gameState.totalScores[0] >= gameState.targetScore) {
-        gameState.matchWinner = 0;
-    } else if (gameState.totalScores[1] >= gameState.targetScore) {
-        gameState.matchWinner = 1;
+    // Ensure totalScores has right length
+    if (!gameState.totalScores || gameState.totalScores.length !== numPlayers) {
+        gameState.totalScores = new Array(numPlayers).fill(0);
     }
+
+    gameState.players.forEach((p, i) => {
+        gameState.totalScores[i] = (gameState.totalScores[i] || 0) + p.score;
+    });
+
+    gameState.matchWinner = null;
+    let maxTotal = -1;
+    gameState.players.forEach((p, i) => {
+        if (gameState.totalScores[i] >= gameState.targetScore && gameState.totalScores[i] > maxTotal) {
+            maxTotal = gameState.totalScores[i];
+            gameState.matchWinner = i;
+        }
+    });
 }
 
 function calculateScores(gameState) {
-    // Сбросить очки
+    const numPlayers = gameState.numPlayers || 2;
+    const format = gameState.format || '1v1';
+
     gameState.players.forEach(player => {
         player.score = 0;
         player.bonusPoints = 0;
     });
 
-    // Найти игрока с наибольшим количеством карт
-    const cardCounts = gameState.players.map(player => player.collected.length);
+    if (format === '2v2' && numPlayers === 4) {
+        // Team A: players 0,2 — Team B: players 1,3
+        const teamA = [...gameState.players[0].collected, ...gameState.players[2].collected];
+        const teamB = [...gameState.players[1].collected, ...gameState.players[3].collected];
 
-    // Если у игроков разное количество карт, присудить 2 очка игроку с большим количеством
-    if (cardCounts[0] > cardCounts[1]) {
-        gameState.players[0].score += 2;
-        gameState.players[0].bonusPoints += 2;
-    } else if (cardCounts[1] > cardCounts[0]) {
-        gameState.players[1].score += 2;
-        gameState.players[1].bonusPoints += 2;
+        if (teamA.length > teamB.length) {
+            [0, 2].forEach(i => { gameState.players[i].score += 2; gameState.players[i].bonusPoints += 2; });
+        } else if (teamB.length > teamA.length) {
+            [1, 3].forEach(i => { gameState.players[i].score += 2; gameState.players[i].bonusPoints += 2; });
+        }
+
+        const teamAClubs = teamA.filter(c => c.suit === 'clubs').length;
+        const teamBClubs = teamB.filter(c => c.suit === 'clubs').length;
+        if (teamAClubs > teamBClubs) {
+            [0, 2].forEach(i => { gameState.players[i].score += 1; gameState.players[i].bonusPoints += 1; });
+        } else if (teamBClubs > teamAClubs) {
+            [1, 3].forEach(i => { gameState.players[i].score += 1; gameState.players[i].bonusPoints += 1; });
+        }
+    } else {
+        // Individual scoring (1v1 and 3p)
+        const cardCounts = gameState.players.map(p => p.collected.length);
+        const maxCards = Math.max(...cardCounts);
+        const maxCardPlayers = gameState.players.filter(p => p.collected.length === maxCards);
+        if (maxCardPlayers.length === 1) {
+            maxCardPlayers[0].score += 2;
+            maxCardPlayers[0].bonusPoints += 2;
+        }
+
+        const clubCounts = gameState.players.map(p => p.collected.filter(c => c.suit === 'clubs').length);
+        const maxClubs = Math.max(...clubCounts);
+        const maxClubPlayers = gameState.players.filter(p =>
+            p.collected.filter(c => c.suit === 'clubs').length === maxClubs
+        );
+        if (maxClubPlayers.length === 1) {
+            maxClubPlayers[0].score += 1;
+            maxClubPlayers[0].bonusPoints += 1;
+        }
     }
 
-    // Подсчитать крести для каждого игрока
-    const clubsCounts = gameState.players.map(player =>
-        player.collected.filter(card => card.suit === 'clubs').length
-    );
-
-    // Если у игроков разное количество крестей, присудить 1 очко игроку с большим количеством
-    if (clubsCounts[0] > clubsCounts[1]) {
-        gameState.players[0].score += 1;
-        gameState.players[0].bonusPoints += 1;
-    } else if (clubsCounts[1] > clubsCounts[0]) {
-        gameState.players[1].score += 1;
-        gameState.players[1].bonusPoints += 1;
-    }
-
-    // Проверить специальные карты
+    // Special cards for each player individually
     gameState.players.forEach(player => {
-        // Проверить наличие двойки крестей
-        if (player.collected.some(card => card.suit === 'clubs' && card.value === '2')) {
-            player.score += 1;
-            player.bonusPoints += 1;
-            player.hasClub2 = true;
-        } else {
-            player.hasClub2 = false;
-        }
-
-        // Проверить наличие десятки бубен
-        if (player.collected.some(card => card.suit === 'diamonds' && card.value === '10')) {
-            player.score += 1;
-            player.bonusPoints += 1;
-            player.hasDiamond10 = true;
-        } else {
-            player.hasDiamond10 = false;
-        }
+        player.hasClub2 = player.collected.some(c => c.suit === 'clubs' && c.value === '2');
+        player.hasDiamond10 = player.collected.some(c => c.suit === 'diamonds' && c.value === '10');
+        if (player.hasClub2) { player.score += 1; player.bonusPoints += 1; }
+        if (player.hasDiamond10) { player.score += 1; player.bonusPoints += 1; }
     });
 }
 
