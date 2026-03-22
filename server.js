@@ -490,6 +490,39 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('game-update', gameState);
     });
 
+    // Добровольный выход из игры
+    socket.on('leave-game', () => {
+        console.log('Игрок покидает игру:', socket.id);
+
+        if (socket.roomId && rooms.has(socket.roomId)) {
+            const gameState = rooms.get(socket.roomId);
+            const playerIndex = gameState.players.findIndex(p => p.id === socket.id);
+
+            if (playerIndex !== -1) {
+                const playerName = gameState.players[playerIndex].name;
+                gameState.players[playerIndex].connected = false;
+
+                // Уведомляем всех остальных игроков
+                socket.to(socket.roomId).emit('opponent-left', {
+                    playerName: playerName,
+                    playerIndex: playerIndex
+                });
+
+                // В 1v1 — удаляем комнату сразу
+                if (gameState.format === '1v1' || gameState.players.length === 2) {
+                    rooms.delete(socket.roomId);
+                    deleteRoomFile(socket.roomId);
+                    console.log(`Комната ${socket.roomId} удалена — игрок вышел из 1v1`);
+                } else {
+                    saveRoomToFile(socket.roomId, gameState);
+                }
+
+                socket.leave(socket.roomId);
+                socket.roomId = null;
+            }
+        }
+    });
+
     // Обработка отключения игрока
     socket.on('disconnect', () => {
         console.log('Отключение:', socket.id);

@@ -56,6 +56,11 @@ class GameClient {
             if (typeof this.onPlayerDisconnected === 'function') this.onPlayerDisconnected(data);
         });
 
+        // Противник добровольно вышел из игры
+        this.socket.on('opponent-left', (data) => {
+            if (typeof this.onOpponentLeft === 'function') this.onOpponentLeft(data);
+        });
+
         // Восстановление сессии
         this.socket.on('game-session-restored', (data) => {
             this.updateLocalData(data);
@@ -151,6 +156,13 @@ class GameClient {
     forceStartGame() {
         if (this.roomId) {
             this.socket.emit('force-start-game', this.roomId);
+        }
+    }
+
+    leaveGame() {
+        if (this.roomId) {
+            this.socket.emit('leave-game');
+            this.clearSession();
         }
     }
 

@@ -1021,11 +1021,17 @@ button:disabled {
 
 /* Последняя взятка - перемещена в левый угол */
 #last-taken {
+    --lt-card-w: 55px;
+    --lt-card-h: 77px;
+    --lt-gap: 4px;
     position: absolute;
     left: 10px;
     bottom: calc(var(--card-height) * 1.4375 * 0.5 + 55px);
-    width: 150px;
-    background-color: rgba(255, 255, 255, 0.9);
+    width: calc(var(--lt-card-w) * 2 + var(--lt-gap) + 16px);
+    max-height: 45vh;
+    display: flex;
+    flex-direction: column;
+    background-color: rgba(255, 255, 255, 0.93);
     border-radius: 8px;
     padding: 8px;
     box-shadow: var(--shadow-sm);
@@ -1038,20 +1044,30 @@ button:disabled {
     margin-bottom: 5px;
     text-align: center;
     font-size: 0.9rem;
+    flex-shrink: 0;
 }
 
 .last-taken-cards {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(2, var(--lt-card-w));
     justify-content: center;
-    gap: 4px;
+    gap: var(--lt-gap);
     margin: 5px 0;
+    overflow-y: auto;
+    max-height: calc(var(--lt-card-h) + var(--lt-gap));
+    scrollbar-width: thin;
+    scrollbar-color: rgba(61, 90, 128, 0.3) transparent;
 }
 
+.last-taken-cards::-webkit-scrollbar { width: 3px; }
+.last-taken-cards::-webkit-scrollbar-thumb { background: rgba(61, 90, 128, 0.3); border-radius: 3px; }
+
 .last-taken-cards .card {
-    transform: scale(0.55);
-    transform-origin: center;
-    margin: -8px -4px;
+    width: var(--lt-card-w) !important;
+    height: var(--lt-card-h) !important;
+    transform: none !important;
+    margin: 0;
+    padding: 0;
 }
 
 .last-taken-by {
@@ -1509,13 +1525,15 @@ button:disabled {
         min-height: 148px;
     }
 
-    /* Уменьшаем размер всплывающего окна "Последняя взятка" */
+    /* Последняя взятка — мобилка 768 */
     #last-taken {
-        width: 130px;
-        font-size: 0.8rem;
+        --lt-card-w: 50px;
+        --lt-card-h: 70px;
+        width: calc(var(--lt-card-w) * 2 + var(--lt-gap) + 14px);
         padding: 6px;
         left: 5px;
         bottom: calc(var(--card-height) * 1.4375 * 0.5 + 55px);
+        font-size: 0.8rem;
     }
 
     #last-taken h4 {
@@ -1526,11 +1544,6 @@ button:disabled {
     .last-taken-by {
         font-size: 0.75rem;
         margin-top: 3px;
-    }
-
-    .last-taken-cards .card {
-        transform: scale(0.45);
-        margin: -12px;
     }
 
     /* Карты на столе поднимаем еще выше на мобильных устройствах */
@@ -1548,7 +1561,6 @@ button:disabled {
         max-height: 100vh;
     }
 
-    /* Уменьшаем высоту для мобильных устройств */
     .game-layout {
         height: calc(100vh - 120px);
     }
@@ -1608,28 +1620,24 @@ button:disabled {
         font-size: 0.75rem;
     }
 
-    /* Максимальное сжатие для очень маленьких экранов */
     .game-layout {
         height: calc(100vh - 100px);
     }
 
     /* Дополнительное смещение для блока "Последняя взятка" */
+    /* Последняя взятка — мобилка 480 */
     #last-taken {
-        width: 110px;
+        --lt-card-w: 45px;
+        --lt-card-h: 63px;
+        width: calc(var(--lt-card-w) * 2 + var(--lt-gap) + 12px);
         font-size: 0.75rem;
-        padding: 4px;
+        padding: 5px;
     }
 
     /* Еще больше поднимаем карты на столе */
     .table-cards {
         padding: 5px 5px 70px;
         margin-top: 25px;
-    }
-
-    /* Уменьшаем размер карт в блоке "Последняя взятка" */
-    .last-taken-cards .card {
-        transform: scale(0.4);
-        margin: -14px;
     }
 
     /* Opponent squares smaller on small screens */
@@ -1953,9 +1961,10 @@ button:disabled {
 
     .round-indicator {
         position: absolute;
-        top: 35px;  /* Перемещаем ниже блока счета */
-        left: 50%;
-        transform: translateX(-50%);
+        top: 5px;
+        right: 10px;
+        left: auto;
+        transform: none;
         background-color: rgba(52, 58, 64, 0.8);
         color: white;
         padding: 3px 8px;
@@ -1980,6 +1989,219 @@ button:disabled {
         top: 5px;
         left: 10px;
         transform: none;
+    }
+}
+
+/* =========================================
+   ВСТРАИВАНИЕ ЭКРАНА — ПЛАНШЕТЫ И ДЕСКТОП (769px+)
+   ========================================= */
+@media screen and (min-width: 769px) {
+    body {
+        height: 100dvh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .container {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    #game-board {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .game-layout {
+        flex: 1;
+        height: auto;
+        max-height: none;
+    }
+
+    #game-setup {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    .game-controls {
+        flex-shrink: 0;
+    }
+}
+
+/* =========================================
+   ПЛАНШЕТЫ (768px – 1024px)
+   ========================================= */
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+    :root {
+        --card-width: 80px;
+        --card-height: 112px;
+    }
+
+    .game-layout {
+        border-radius: 12px;
+        margin: 5px;
+    }
+
+    .hand {
+        height: 180px;
+        min-height: 180px;
+    }
+
+    .bottom-player .hand {
+        height: calc(var(--card-height) * 1.4375);
+        min-height: calc(var(--card-height) * 1.4375);
+    }
+
+    .top-player .hand {
+        height: calc(var(--card-height) * 0.65);
+        min-height: calc(var(--card-height) * 0.65);
+    }
+
+    #last-taken {
+        --lt-card-w: 55px;
+        --lt-card-h: 77px;
+        width: calc(var(--lt-card-w) * 2 + var(--lt-gap) + 16px);
+        max-height: 35vh;
+    }
+
+    .round-indicator {
+        right: 10px;
+        left: auto;
+        top: 5px;
+        transform: none;
+    }
+
+    .table-cards {
+        max-width: 600px;
+    }
+}
+
+/* =========================================
+   ДЕСКТОП (1024px+)
+   ========================================= */
+@media screen and (min-width: 1025px) {
+    :root {
+        --card-width: 90px;
+        --card-height: 126px;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        height: 100%;
+    }
+
+    .game-layout {
+        border-radius: 16px;
+        margin: 8px;
+        box-shadow: var(--shadow-lg);
+    }
+
+    .hand {
+        height: 200px;
+        min-height: 200px;
+    }
+
+    .bottom-player .hand {
+        height: calc(var(--card-height) * 1.4375);
+        min-height: calc(var(--card-height) * 1.4375);
+    }
+
+    .top-player .hand {
+        height: calc(var(--card-height) * 0.65);
+        min-height: calc(var(--card-height) * 0.65);
+    }
+
+    .game-table {
+        min-height: 280px;
+    }
+
+    .table-cards {
+        max-width: 700px;
+        gap: 8px;
+    }
+
+    #last-taken {
+        --lt-card-w: 60px;
+        --lt-card-h: 84px;
+        width: calc(var(--lt-card-w) * 2 + var(--lt-gap) + 16px);
+        max-height: 40vh;
+    }
+
+    .round-indicator {
+        right: 10px;
+        left: auto;
+        top: 5px;
+        transform: none;
+    }
+
+    /* Карты на столе крупнее */
+    .table-cards .card {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    /* Ховер-эффекты заметнее */
+    .hand .card:hover {
+        transform: translateX(var(--fan-offset, 0px)) translateY(-20px) rotate(var(--fan-angle, 0deg)) !important;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    header {
+        padding: 10px 20px;
+    }
+
+    .game-controls {
+        padding: 15px 20px;
+    }
+}
+
+/* =========================================
+   БЛОКИРОВКА ГОРИЗОНТАЛЬНОЙ ОРИЕНТАЦИИ (МОБИЛКИ)
+   ========================================= */
+#rotate-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #1b4332;
+    z-index: 99999;
+    justify-content: center;
+    align-items: center;
+}
+
+.rotate-message {
+    text-align: center;
+    color: white;
+}
+
+.rotate-icon {
+    font-size: 4rem;
+    animation: rotate-phone 2s ease-in-out infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes rotate-phone {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(90deg); }
+    50% { transform: rotate(90deg); }
+    75% { transform: rotate(0deg); }
+}
+
+.rotate-message p {
+    font-size: 1.2rem;
+    line-height: 1.6;
+}
+
+/* Показываем оверлей на телефонах в ландшафте.
+   Телефон в ландшафте = маленькая высота (до 500px) + landscape.
+   Планшеты/десктопы не попадают — у них высота больше. */
+@media screen and (max-height: 500px) and (orientation: landscape) {
+    #rotate-overlay {
+        display: flex;
     }
 }
 

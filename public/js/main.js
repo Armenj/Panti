@@ -478,6 +478,7 @@ function setupMultiplayerListeners() {
 	gameClient.onGameStart = handleGameStart;
 	gameClient.onGameUpdate = handleGameUpdate;
 	gameClient.onPlayerDisconnected = handlePlayerDisconnected;
+	gameClient.onOpponentLeft = handleOpponentLeft;
 	gameClient.onError = handleGameError;
 	gameClient.onSessionRestored = handleGameStart;
 	gameClient.onPlayerJoined = handlePlayerJoined;
@@ -785,7 +786,19 @@ function handlePlayerDisconnected(data) {
 
 	// Возвращаемся к экрану настройки
 	setTimeout(() => {
-		resetGame();
+		performReset();
+	}, 3000);
+}
+
+function handleOpponentLeft(data) {
+	showNotification(`Игрок ${data.playerName} вышел из игры`, 'error');
+
+	if (gameClient) {
+		gameClient.clearSession();
+	}
+
+	setTimeout(() => {
+		performReset();
 	}, 3000);
 }
 
@@ -1456,7 +1469,6 @@ function updateLastTakenInfo() {
 
 	gameState.lastTakenCards.forEach(card => {
 		const cardElement = createCardElement(card, false);
-		cardElement.style.transform = 'scale(0.7)'; // Уменьшаем размер карт в блоке последней взятки
 		elements.lastTakenCards.appendChild(cardElement);
 	});
 
@@ -2676,11 +2688,20 @@ function resetGame() {
 
 // Функция для фактического сброса игры
 function performReset() {
+	// Уведомить сервер о выходе (если онлайн-игра)
+	if (gameState.isOnlineGame && gameClient) {
+		gameClient.leaveGame();
+	}
+
 	// Очистить анимацию победы
 	if (fireworksIntervalId) {
 		clearInterval(fireworksIntervalId);
 		fireworksIntervalId = null;
 	}
+
+	// Убрать полноэкранный фейерверк
+	const fullscreenFireworks = document.getElementById('fullscreen-fireworks');
+	if (fullscreenFireworks) fullscreenFireworks.remove();
 
 	// Сбросить игровое состояние и UI
 	showSection(gameSections.setup);
@@ -3175,58 +3196,216 @@ function renderPlayerHand(player, containerElement, isVisible = true) {
 	});
 }
 
-// Впечатляющая анимация победы — конфетти + блики + пульсация
+// Полноэкранный фейерверк — настоящий салют
 let fireworksIntervalId = null;
 
 function createFireworks() {
-	const winnerElement = document.getElementById('game-winner');
-	if (!winnerElement) return;
+	// Убираем старый
+	const old = document.getElementById('fullscreen-fireworks');
+	if (old) old.remove();
 
-	// Очищаем предыдущую анимацию если есть
-	if (fireworksIntervalId) {
-		clearInterval(fireworksIntervalId);
-		fireworksIntervalId = null;
+	// Стили анимации
+	if (!document.getElementById('win-pulse-style')) {
+		const style = document.createElement('style');
+		style.id = 'win-pulse-style';
+		style.textContent = `
+			@keyframes win-pulse {
+				0%, 100% { transform: translateX(-50%) scale(1); opacity: 1; }
+				50% { transform: translateX(-50%) scale(1.1); opacity: 0.9; }
+			}
+			@keyframes win-fade-in {
+				from { opacity: 0; transform: translateX(-50%) scale(0.5); }
+				to { opacity: 1; transform: translateX(-50%) scale(1); }
+			}
+		`;
+		document.head.appendChild(style);
 	}
 
-	winnerElement.className = 'winner-container';
-	const originalText = winnerElement.textContent;
+	// Контейнер
+	const overlay = document.createElement('div');
+	overlay.id = 'fullscreen-fireworks';
+	overlay.style.cssText = 'position:fixed;inset:0;z-index:9998;overflow:hidden;';
+	document.body.appendChild(overlay);
 
-	winnerElement.innerHTML = `
-		<div class="winner-glow"></div>
-		<div class="winner-text">${originalText}</div>
-		<div class="confetti-container" id="confetti-box"></div>
+	// Canvas (под надписью)
+	const canvas = document.createElement('canvas');
+	canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;';
+	overlay.appendChild(canvas);
+
+	// Надпись поверх canvas
+	const label = document.createElement('div');
+	label.textContent = 'Вы выиграли!';
+	label.style.cssText = `
+		position:absolute; top:18%; left:50%; transform:translateX(-50%);
+		font-size:clamp(2.2rem, 9vw, 5rem); font-weight:900;
+		color:#fff; text-align:center; z-index:10; white-space:nowrap;
+		text-shadow: 0 0 30px #ffa502, 0 0 60px #ff4757, 0 0 100px #ff6348, 0 4px 10px rgba(0,0,0,0.7);
+		animation: win-fade-in 0.8s ease-out forwards, win-pulse 1.5s ease-in-out 0.8s infinite;
+		font-family:'Roboto',sans-serif; letter-spacing:3px;
+		pointer-events:none;
 	`;
+	overlay.appendChild(label);
 
-	const confettiBox = document.getElementById('confetti-box');
-	const colors = ['#ff4757', '#ffa502', '#2ed573', '#1e90ff', '#ff6b81', '#eccc68', '#7bed9f', '#70a1ff', '#a29bfe', '#fd79a8'];
-	const shapes = ['confetti-rect', 'confetti-circle', 'confetti-strip'];
+	const ctx = canvas.getContext('2d');
+	let W = canvas.width = window.innerWidth;
+	let H = canvas.height = window.innerHeight;
 
-	function spawnConfettiBurst(count) {
-		for (let i = 0; i < count; i++) {
-			setTimeout(() => {
-				const piece = document.createElement('div');
-				const shape = shapes[Math.floor(Math.random() * shapes.length)];
-				piece.className = `confetti-piece ${shape}`;
+	const colors = [
+		'#ff4757','#ffa502','#2ed573','#1e90ff',
+		'#ff6b81','#eccc68','#7bed9f','#70a1ff',
+		'#a29bfe','#fd79a8','#ffeaa7','#55efc4',
+		'#ff9ff3','#f368e0','#48dbfb','#ff6348'
+	];
 
-				const color = colors[Math.floor(Math.random() * colors.length)];
-				piece.style.setProperty('--color', color);
-				piece.style.left = `${Math.random() * 100}%`;
-				piece.style.setProperty('--drift', `${(Math.random() - 0.5) * 120}px`);
-				piece.style.setProperty('--rot', `${Math.random() * 720 - 360}deg`);
-				piece.style.animationDuration = `${1.5 + Math.random() * 1.5}s`;
-				piece.style.animationDelay = `${Math.random() * 0.3}s`;
+	const particles = [];
+	const rockets = [];
+	let animId;
 
-				confettiBox.appendChild(piece);
-				setTimeout(() => piece.remove(), 3500);
-			}, i * 30);
+	class Particle {
+		constructor(x, y, color, vx, vy, size, life) {
+			this.x = x; this.y = y; this.color = color;
+			this.vx = vx; this.vy = vy;
+			this.size = size; this.life = life; this.maxLife = life;
+		}
+		update() {
+			this.vy += 0.04;
+			this.vx *= 0.985;
+			this.vy *= 0.985;
+			this.x += this.vx;
+			this.y += this.vy;
+			this.life--;
+		}
+		draw() {
+			const a = this.life / this.maxLife;
+			const r = this.size * (0.3 + a * 0.7);
+			// Яркое ядро
+			ctx.globalAlpha = a;
+			ctx.beginPath();
+			ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+			ctx.fillStyle = this.color;
+			ctx.fill();
+			// Мягкое свечение
+			ctx.globalAlpha = a * 0.25;
+			ctx.beginPath();
+			ctx.arc(this.x, this.y, r * 4, 0, Math.PI * 2);
+			ctx.fill();
 		}
 	}
 
-	// Начальный мощный залп
-	spawnConfettiBurst(50);
+	class Rocket {
+		constructor(x, targetY) {
+			this.x = x;
+			this.y = H + 10;
+			this.targetY = targetY;
+			this.speed = (H - targetY) / 18; // долетает за ~18 кадров
+			this.color = colors[Math.floor(Math.random() * colors.length)];
+		}
+		update() {
+			this.y -= this.speed;
+			// Искры хвоста
+			if (Math.random() > 0.3) {
+				particles.push(new Particle(
+					this.x + (Math.random()-0.5)*4, this.y,
+					'#ffeaa7', (Math.random()-0.5)*0.5, Math.random()*2,
+					1.5, 15
+				));
+			}
+			if (this.y <= this.targetY) {
+				this.explode();
+				return true;
+			}
+			return false;
+		}
+		explode() {
+			const count = 120 + Math.floor(Math.random() * 60);
+			const c1 = this.color;
+			const c2 = colors[Math.floor(Math.random() * colors.length)];
+			for (let i = 0; i < count; i++) {
+				const angle = (Math.PI * 2 * i) / count + (Math.random()-0.5)*0.4;
+				const speed = 2 + Math.random() * 5;
+				const c = Math.random() > 0.3 ? c1 : c2;
+				particles.push(new Particle(
+					this.x, this.y, c,
+					Math.cos(angle) * speed, Math.sin(angle) * speed,
+					2 + Math.random() * 2.5,
+					50 + Math.floor(Math.random() * 40)
+				));
+			}
+			// Белые блёстки по центру
+			for (let i = 0; i < 40; i++) {
+				const a = Math.random() * Math.PI * 2;
+				const s = 0.5 + Math.random() * 2.5;
+				particles.push(new Particle(
+					this.x, this.y, '#fff',
+					Math.cos(a)*s, Math.sin(a)*s,
+					1 + Math.random(), 25 + Math.floor(Math.random()*15)
+				));
+			}
+		}
+		draw() {
+			ctx.globalAlpha = 1;
+			ctx.beginPath();
+			ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+			ctx.fillStyle = '#fff';
+			ctx.fill();
+		}
+	}
 
-	// Повторяющиеся залпы
-	fireworksIntervalId = setInterval(() => {
-		spawnConfettiBurst(30);
-	}, 2500);
+	function animate() {
+		// Чёрное небо — полная очистка
+		ctx.globalAlpha = 1;
+		ctx.fillStyle = '#000';
+		ctx.fillRect(0, 0, W, H);
+
+		for (let i = rockets.length - 1; i >= 0; i--) {
+			if (rockets[i].update()) { rockets.splice(i, 1); }
+			else { rockets[i].draw(); }
+		}
+		for (let i = particles.length - 1; i >= 0; i--) {
+			particles[i].update();
+			if (particles[i].life <= 0) { particles.splice(i, 1); }
+			else { particles[i].draw(); }
+		}
+
+		animId = requestAnimationFrame(animate);
+	}
+
+	// === Сценарий салюта ===
+	// Волна 1: 3 ракеты одновременно (0ms)
+	function wave1() {
+		for (let i = 0; i < 3; i++) {
+			rockets.push(new Rocket(
+				W * (0.2 + i * 0.3) + (Math.random()-0.5)*40,
+				H * (0.2 + Math.random()*0.15)
+			));
+		}
+	}
+	// Волна 2: ещё 3 ракеты (1.2 сек)
+	function wave2() {
+		for (let i = 0; i < 3; i++) {
+			rockets.push(new Rocket(
+				W * (0.15 + i * 0.35) + (Math.random()-0.5)*50,
+				H * (0.15 + Math.random()*0.2)
+			));
+		}
+	}
+	// Финал: 1 мощная ракета в центр (2.8 сек)
+	function waveFinal() {
+		rockets.push(new Rocket(W * 0.5, H * 0.22));
+	}
+
+	wave1();
+	setTimeout(wave2, 1200);
+	setTimeout(waveFinal, 2800);
+
+	animate();
+
+	// Завершение — ждём пока частицы догорят, потом убираем
+	setTimeout(() => {
+		cancelAnimationFrame(animId);
+		// Плавно гасим overlay
+		overlay.style.transition = 'opacity 1.5s';
+		overlay.style.opacity = '0';
+		setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 1500);
+	}, 7000);
 }
