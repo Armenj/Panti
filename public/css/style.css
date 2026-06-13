@@ -2205,3 +2205,78 @@ button:disabled {
     }
 }
 
+
+/* ===== Плоский UI поверх сукна (без полосы-хедера) — 2026-06-14 ===== */
+/* Хедер -> прозрачный оверлей: элементы лежат поверх зелёного поля */
+header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    background: none;
+    border-bottom: none;
+    margin: 0;
+    padding: calc(env(safe-area-inset-top) + 8px) 12px 0;
+    pointer-events: none;
+}
+header .game-info {
+    pointer-events: auto;
+    gap: 10px;
+    align-items: flex-start;
+    width: 100%;
+    justify-content: flex-end;
+}
+
+/* Зелёное поле во всю площадь стола: без скруглений/тени */
+.game-layout {
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* Колода: лого (рубашка карты) с цифрой на ней — вместо слова «Колода» */
+#deck-count {
+    width: 40px;
+    height: 56px;
+    padding: 0;
+    border-radius: 6px;
+    background: url("/images/cards/card_back.png") center/cover no-repeat;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 5px rgba(0,0,0,.7);
+}
+
+/* Плоские иконки: правила (i) и выход (стрелка) */
+#rules-btn,
+#restart-btn {
+    background: none;
+    box-shadow: none;
+    color: #fff;
+    padding: 8px;
+    min-width: 0;
+    font-size: 1.3rem;
+    text-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+#rules-btn:hover,
+#restart-btn:hover {
+    background: none;
+    box-shadow: none;
+    transform: none;
+}
+
+/* Счёт — плоская полупрозрачная плашка поверх сукна */
+.game-score-display {
+    background-color: rgba(255, 255, 255, 0.15);
+    border: none;
+    color: #fff;
+    box-shadow: none;
+    margin-right: auto;
+}
+.game-score-display .score-title {
+    color: rgba(255, 255, 255, 0.82);
+}

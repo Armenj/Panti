@@ -1204,7 +1204,7 @@ function updateCollectedCount() {
 
 // Функция обновления счетчика колоды
 function updateDeckCount() {
-	elements.deckCount.textContent = `Колода: ${gameState.deck.length}`;
+	elements.deckCount.textContent = gameState.deck.length;
 }
 
 // Функции выбора карт
@@ -2720,7 +2720,7 @@ function performReset() {
 	if (playerCollectedCount) playerCollectedCount.textContent = '0';
 
 	// Сбросить счетчик колоды
-	elements.deckCount.textContent = 'Колода: 52';
+	elements.deckCount.textContent = '52';
 
 	// Сбросить флаги онлайн-игры
 	gameState.isOnlineGame = false;

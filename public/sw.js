@@ -2,7 +2,7 @@
    Network-first for HTML/JS so an online player ALWAYS gets the latest game code
    (important while the game is under active development). Cache-first only for
    rarely-changing static assets (card images, css, fonts). Never touches /socket.io/. */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'odin-' + VERSION;
 const SHELL = [
   '/', '/index.html',
