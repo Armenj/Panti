@@ -2290,3 +2290,110 @@ header {
 body:has(#game-board:not(.hidden)) header {
     display: flex;
 }
+
+/* ===== Раскладка на всю высоту ДЛЯ ТЕЛЕФОНОВ — 2026-06-14 ===== */
+/* Та же логика, что для планшетов/десктопа (была только min-width:769px).
+   Сукно тянется на всю высоту, белый блок прижат к реальному низу экрана.
+   Карты по-прежнему обрезаны снизу (overflow:hidden у сукна). */
+@media screen and (max-width: 768px) {
+    body {
+        height: 100dvh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    .container {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    #game-board {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
+    }
+    .game-layout {
+        flex: 1;
+        height: auto;
+        max-height: none;
+        min-height: 0;
+    }
+    #game-setup {
+        flex: 1;
+        overflow-y: auto;
+    }
+    .game-controls {
+        flex-shrink: 0;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+}
+
+/* Отступ сверху на телефоне, чтобы плашка соперника не пряталась под статус-бар */
+@media screen and (max-width: 768px) {
+    .game-layout {
+        padding-top: calc(env(safe-area-inset-top) + 10px);
+    }
+}
+
+/* Нижний блок ещё ниже (~1см): уменьшаем нижний отступ белого блока */
+@media screen and (max-width: 768px) {
+    .game-controls {
+        padding-bottom: 6px;
+    }
+}
+
+/* Ещё ~0.5см ниже: нулевой отступ + небольшой сдвиг к самому краю */
+@media screen and (max-width: 768px) {
+    .game-controls {
+        padding-bottom: 0;
+        margin-bottom: -14px;
+    }
+}
+
+/* ===== ЧИСТЫЙ НИЗ (финальный): без светлой полосы, кнопки видны и контрастны — 2026-06-14 ===== */
+@media screen and (max-width: 768px) {
+    /* убираем светлую полосу и сдвиг, из-за которого резались кнопки */
+    .game-controls {
+        background: transparent;
+        margin-bottom: 0;
+        padding: 4px 10px calc(env(safe-area-inset-bottom) + 4px);
+    }
+    /* «Ваш ход» — прямо на сукне, белым */
+    .game-message {
+        background: transparent;
+        color: #ffffff;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+        margin-bottom: 8px;
+    }
+    /* контрастные кнопки, чтобы не сливались с зелёным */
+    #discard-card-btn {
+        background-color: #2c3e50;
+        color: #fff;
+    }
+    #confirm-selection-btn {
+        background-color: #f0b429;
+        color: #1f2d39;
+    }
+    #confirm-selection-btn:disabled {
+        background-color: rgba(0, 0, 0, .28);
+        color: rgba(255, 255, 255, .7);
+    }
+}
+
+/* Ужать плашку кнопок: убрать пустое место ПОД кнопками (без обрезки) */
+@media screen and (max-width: 768px) {
+    .game-controls {
+        padding: 4px 10px 8px;   /* было ~38px снизу → 8px */
+        margin-bottom: 0;
+    }
+}
+
+/* Убрать «Ваш ход» и его место — плашка ещё компактнее */
+@media screen and (max-width: 768px) {
+    .game-message {
+        display: none;
+    }
+}
