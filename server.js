@@ -490,6 +490,16 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('game-update', gameState);
     });
 
+    // Эмоция игрока — релей остальным в комнате
+    socket.on('player-emoji', (data) => {
+        if (data && data.roomId && data.emoji) {
+            socket.to(data.roomId).emit('player-emoji', {
+                playerIndex: data.playerIndex,
+                emoji: String(data.emoji).slice(0, 8)
+            });
+        }
+    });
+
     // Добровольный выход из игры
     socket.on('leave-game', () => {
         console.log('Игрок покидает игру:', socket.id);

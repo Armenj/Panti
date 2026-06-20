@@ -329,17 +329,43 @@ document.addEventListener('DOMContentLoaded', function() {
 	const roomIdFromUrl = urlParams.get('room');
 
 	if (roomIdFromUrl) {
-		// Переключаем режим на "Онлайн игра"
+		// Гость пришёл по ссылке-приглашению — показываем максимально простой экран:
+		// только поле имени и кнопка «Подключиться», всё лишнее прячем.
+		document.body.classList.add('invite-mode');
+
+		// Включаем онлайн-режим
 		const onlineRadio = document.querySelector('input[name="game-mode"][value="online"]');
 		if (onlineRadio) {
 			onlineRadio.checked = true;
 			onlineRadio.dispatchEvent(new Event('change'));
 		}
 
-		// Сразу показываем вкладку "Войти по коду" с предзаполненным кодом
+		// Прячем выбор режима, настройки компьютера, вкладки и панель создания
+		const modeGroup = document.querySelector('input[name="game-mode"]');
+		if (modeGroup && modeGroup.closest('.option-group')) {
+			modeGroup.closest('.option-group').classList.add('hidden');
+		}
+		['computer-mode-options', 'online-action-tabs', 'create-panel', 'room-info']
+			.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+		const onlineSection = document.getElementById('online-section');
+		if (onlineSection) onlineSection.classList.remove('hidden');
+
+		// Показываем панель входа, но прячем поле кода — код берём из ссылки
 		switchOnlineTab('join');
+		const joinPanel = document.getElementById('join-panel');
+		if (joinPanel) joinPanel.classList.remove('hidden');
 		const roomIdInput = document.getElementById('room-id');
-		if (roomIdInput) roomIdInput.value = roomIdFromUrl;
+		if (roomIdInput) {
+			roomIdInput.value = roomIdFromUrl;
+			const grp = roomIdInput.closest('.input-group');
+			if (grp) grp.classList.add('hidden');
+		}
+
+		// Дружелюбный заголовок и понятная кнопка
+		const setupTitle = document.querySelector('#game-setup > h2');
+		if (setupTitle) setupTitle.textContent = 'Вас пригласили в игру 🎴';
+		const joinBtn = document.getElementById('join-game-btn');
+		if (joinBtn) joinBtn.textContent = 'Подключиться';
 
 		// Фокус на поле имени
 		setTimeout(() => {
@@ -484,6 +510,7 @@ function setupMultiplayerListeners() {
 	gameClient.onPlayerJoined = handlePlayerJoined;
 	gameClient.onKicked = handleKicked;
 	gameClient.onLobbyUpdated = handleLobbyUpdated;
+	gameClient.onPlayerEmoji = handlePlayerEmoji;
 }
 
 function createRoom() {
@@ -1132,8 +1159,7 @@ function updateRoundAndScoreInfo() {
 		scoreDisplay.innerHTML = `
             <div class="score-title">Общий счёт:</div>
             <div class="score-value">
-                <span>Вы: <strong id="player-total-score-display">0</strong></span>
-                <span>Компьютер: <strong id="opponent-total-score-display">0</strong></span>
+                <span class="score-name">Вы:</span><span class="score-pts" id="player-total-score-display">0</span>
             </div>
         `;
 
@@ -1155,11 +1181,11 @@ function updateRoundAndScoreInfo() {
 		// Update score display content for all opponents
 		const scoreValue = scoreDisplay.querySelector('.score-value');
 		if (scoreValue) {
-			let html = `<span>Вы: <strong id="player-total-score-display">${gameState.totalScores[myIndex] || 0}</strong></span>`;
+			let html = `<span class="score-name">Вы:</span><span class="score-pts">${gameState.totalScores[myIndex] || 0}</span>`;
 			gameState.players.forEach((p, i) => {
 				if (i !== myIndex) {
 					const name = p.name || `Игрок ${i + 1}`;
-					html += `<span>${name}: <strong>${gameState.totalScores[i] || 0}</strong></span>`;
+					html += `<span class="score-name">${name}:</span><span class="score-pts">${gameState.totalScores[i] || 0}</span>`;
 				}
 			});
 			scoreValue.innerHTML = html;
@@ -1216,16 +1242,17 @@ function selectHandCard(cardElement, card) {
 		return;
 	}
 
-	// Очистить предыдущие выборы
+	// Очищаем только предыдущий выбор карты руки. Выбор карт на столе сохраняем —
+	// игрок мог сначала ткнуть карты на столе, а потом свою (обратный порядок).
 	clearHandCardSelection();
-	clearTableCardSelection();
 
 	// Выбрать эту карту
 	cardElement.classList.add('selected');
 	gameState.selectedHandCard = card;
 
-	// Валет: автоматически выбрать все доступные карты на столе
+	// Валет: сбрасываем выбор стола и автоматически выбираем все доступные карты
 	if (card.value === 'J' && gameState.tableCards.length > 0) {
+		clearTableCardSelection();
 		const validTableCards = gameState.tableCards.filter(c => !['Q', 'K'].includes(c.value));
 		if (validTableCards.length > 0) {
 			// Выделяем карты визуально
@@ -1248,16 +1275,21 @@ function selectHandCard(cardElement, card) {
 		}
 	}
 
-	// Проверить, может ли эта карта взять любые карты на столе
-	checkIfCanTake();
+	// Если карты на столе уже выбраны (игрок начал с них) — проверяем комбинацию,
+	// иначе подсказываем, можно ли этой картой что-то взять.
+	if (gameState.selectedTableCards.length > 0) {
+		checkIfValidSelection();
+	} else {
+		checkIfCanTake();
+	}
 }
 
 function selectTableCard(cardElement, card) {
-	// Если игра закончена, не ход игрока или не выбрана карта руки, ничего не делаем
+	// Если игра закончена или не ход игрока, ничего не делаем.
+	// Карту руки заранее НЕ требуем — игрок может начать выбор со стола.
 	if (gameState.gameEnded ||
 		(gameState.isOnlineGame && !gameClient.isMyTurn()) ||
-		(!gameState.isOnlineGame && gameState.currentPlayerIndex !== 0) ||
-		!gameState.selectedHandCard) {
+		(!gameState.isOnlineGame && gameState.currentPlayerIndex !== 0)) {
 		return;
 	}
 
@@ -1271,8 +1303,13 @@ function selectTableCard(cardElement, card) {
 		gameState.selectedTableCards.push(card);
 	}
 
-	// Проверить, является ли текущий выбор действительным
-	checkIfValidSelection();
+	// Если карта руки уже выбрана — проверяем комбинацию, иначе ждём её выбора
+	if (gameState.selectedHandCard) {
+		checkIfValidSelection();
+	} else {
+		if (elements.confirmSelectionBtn) elements.confirmSelectionBtn.disabled = true;
+		if (elements.gameMessage) elements.gameMessage.textContent = 'Теперь выберите свою карту';
+	}
 }
 
 function clearHandCardSelection() {
@@ -1449,6 +1486,9 @@ function takeCards(player, handCard, tableCards) {
 	// Установить этого игрока как последнего, кто взял карты
 	gameState.lastPlayerWhoTook = player;
 
+	// Анимация: взятые карты улетают к тому, кто взял (пока DOM ещё не перерисован)
+	flyCardsToCollector([handCard, ...removedTableCards], player);
+
 	// Обновить информацию о последней взятке
 	gameState.lastTakenCards = [handCard, ...removedTableCards];
 	gameState.lastTakenBy = player.name;
@@ -1457,22 +1497,108 @@ function takeCards(player, handCard, tableCards) {
 	updateDeckCount();
 }
 
+// Клонирует взятые карты и пускает их лететь к стопке взявшего игрока.
+// Вызывать ДО перерисовки доски — пока исходные элементы карт ещё на экране.
+function flyCardsToCollector(cards, taker) {
+	try {
+		const takerIndex = gameState.players.indexOf(taker);
+		if (takerIndex < 0) return;
+		const myIndex = gameState.isOnlineGame ? (gameState.playerIndex || 0) : 0;
+
+		// Куда летят: бейдж собранных карт взявшего
+		let destEl;
+		if (takerIndex === myIndex) {
+			destEl = document.getElementById('player-collected');
+		} else {
+			const sq = document.getElementById(`opp-sq-${takerIndex}`);
+			destEl = sq ? sq.querySelector('.opp-collected-badge') : null;
+		}
+		if (!destEl) return;
+		const dr = destEl.getBoundingClientRect();
+		const destX = dr.left + dr.width / 2;
+		const destY = dr.top + dr.height / 2;
+
+		// Ищем исходные элементы карт (на столе и в руке игрока), без повторов
+		const pool = [
+			...document.querySelectorAll('#table-cards .card'),
+			...document.querySelectorAll('#player-cards .card')
+		];
+		const used = new Set();
+		const sources = [];
+		cards.forEach(card => {
+			const el = pool.find(e => !used.has(e) &&
+				e.dataset && e.dataset.value === card.value && e.dataset.suit === card.suit);
+			if (el) { used.add(el); sources.push(el); }
+		});
+		if (!sources.length) return;
+
+		sources.forEach((el, i) => {
+			const r = el.getBoundingClientRect();
+			if (!r.width) return;
+			const clone = el.cloneNode(true);
+			clone.classList.remove('selected');
+			clone.style.cssText =
+				`position:fixed; left:${r.left}px; top:${r.top}px; width:${r.width}px; height:${r.height}px;` +
+				`margin:0; z-index:9990; pointer-events:none; will-change:transform,opacity;` +
+				`box-shadow:0 6px 14px rgba(0,0,0,0.35); border-radius:6px;` +
+				`transition:transform 0.6s cubic-bezier(.45,0,.25,1), opacity 0.6s ease;`;
+			document.body.appendChild(clone);
+			const dx = destX - (r.left + r.width / 2);
+			const dy = destY - (r.top + r.height / 2);
+			// небольшая задержка-каскад, чтобы карты летели «стайкой»
+			requestAnimationFrame(() => {
+				clone.style.transitionDelay = `${i * 45}ms`;
+				clone.style.transform = `translate(${dx}px, ${dy}px) scale(0.18) rotate(${(i - 1) * 16}deg)`;
+				clone.style.opacity = '0.15';
+			});
+			setTimeout(() => { if (clone.parentNode) clone.remove(); }, 700 + i * 45);
+		});
+	} catch (e) {
+		console.warn('flyCardsToCollector error', e);
+	}
+}
+
+let lastTakenHideTimer = null;
+
 function updateLastTakenInfo() {
+	// Сбрасываем предыдущий таймер скрытия и состояние затухания
+	if (lastTakenHideTimer) { clearTimeout(lastTakenHideTimer); lastTakenHideTimer = null; }
+	elements.lastTaken.classList.remove('lt-fade');
+
 	if (!gameState.lastTakenCards || gameState.lastTakenCards.length === 0) {
 		elements.lastTaken.classList.add('hidden');
 		return;
 	}
 
-	// Обновление UI
+	// Обновление UI. Подпись в две строки: «Взял:» и имя ниже.
 	elements.lastTakenCards.innerHTML = '';
-	elements.lastTakenBy.textContent = `Взял(а): ${gameState.lastTakenBy}`;
+	const safeName = String(gameState.lastTakenBy || '')
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	elements.lastTakenBy.innerHTML = `<span class="lt-label">Взял:</span><span class="lt-name">${safeName}</span>`;
 
-	gameState.lastTakenCards.forEach(card => {
+	// Порядок выкладки: сначала карты, взятые со стола (лежат снизу стопки),
+	// сверху — карта, которой взяли (полностью видна, перекрывает на 70%).
+	const handCard = gameState.lastTakenCards[0];
+	const fromTable = gameState.lastTakenCards.slice(1);
+	const ordered = [...fromTable, handCard];
+	const n = ordered.length;
+	const spread = Math.min(n * 4, 14); // общий размах веера в градусах
+
+	ordered.forEach((card, i) => {
 		const cardElement = createCardElement(card, false);
+		const angle = n > 1 ? (-spread / 2 + (spread * i) / (n - 1)) : 0;
+		cardElement.style.transform = `rotate(${angle.toFixed(1)}deg)`;
+		cardElement.style.zIndex = String(i + 1);
 		elements.lastTakenCards.appendChild(cardElement);
 	});
 
 	elements.lastTaken.classList.remove('hidden');
+
+	// Показываем 5 секунд, затем плавно гасим (overlay невидим, но в потоке не мешает)
+	lastTakenHideTimer = setTimeout(() => {
+		elements.lastTaken.classList.add('lt-fade');
+		lastTakenHideTimer = null;
+	}, 5000);
 }
 
 // Функция для раздачи по 4 новых карты каждому игроку
@@ -1646,6 +1772,10 @@ function updateActivePlayerUI() {
         : gameState.currentPlayerIndex === 0;
 
     if (elements.playerArea) elements.playerArea.classList.toggle('active', isMyTurn);
+    // Подсветка своего блока, когда твой ход (как у соперников — #player-self
+    // имеет класс opponent-square, так что та же анимация active-turn применится)
+    const selfBlock = document.getElementById('player-self');
+    if (selfBlock) selfBlock.classList.toggle('active-turn', isMyTurn);
     if (elements.discardCardBtn) elements.discardCardBtn.disabled = !isMyTurn;
     if (elements.confirmSelectionBtn) elements.confirmSelectionBtn.disabled = true;
 
@@ -2560,6 +2690,14 @@ function startGame() {
 		}
 	}
 
+	// Читаем длину игры (целевые очки): по умолчанию 21, короткая — 11
+	let target = 21;
+	const targetInputs = document.querySelectorAll('input[name="target-score"]');
+	for (const input of targetInputs) {
+		if (input.checked) { target = parseInt(input.value, 10) || 21; break; }
+	}
+	gameState.targetScore = target;
+
 	// Режим всегда player-vs-computer для этой кнопки
 	gameState.gameMode = 'player-vs-computer';
 
@@ -2990,6 +3128,9 @@ function setupEventListeners() {
 		elements.confirmSelectionBtn.addEventListener('click', confirmSelection);
 	}
 
+	// Эмоции игрока (свой блок между кнопками)
+	setupEmojiFeature();
+
 	// UI элементы управления
 	if (elements.rulesBtn) {
 		elements.rulesBtn.addEventListener('click', showRules);
@@ -3114,6 +3255,26 @@ function getCardImagePath(card) {
 	return `/images/cards/${valueName}_of_${card.suit}.png`;
 }
 
+// Тихо предзагружаем все картинки карт, чтобы они не «проявлялись» при первом показе.
+// Запускается один раз после загрузки страницы; браузер/SW кладут их в кэш.
+let cardsPreloaded = false;
+function preloadCardImages() {
+	if (cardsPreloaded) return;
+	cardsPreloaded = true;
+	const values = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+	const suits = ['hearts','diamonds','clubs','spades'];
+	const paths = ['/images/cards/card_back.png'];
+	for (const v of values) {
+		for (const s of suits) paths.push(getCardImagePath({ value: v, suit: s }));
+	}
+	paths.forEach(src => { const im = new Image(); im.src = src; });
+}
+if (document.readyState === 'complete') {
+	preloadCardImages();
+} else {
+	window.addEventListener('load', preloadCardImages);
+}
+
 // Функции отображения карт
 function createCardElement(card, isPlayerCard = false) {
 	const cardElement = document.createElement('div');
@@ -3196,6 +3357,83 @@ function renderPlayerHand(player, containerElement, isVisible = true) {
 	});
 }
 
+// ===== Эмоции игрока =====
+const EMOJI_LIST = [
+	'😀','😂','😅','😎','😍','😘',
+	'🤣','😜','🤔','😐','😴','🥱',
+	'😡','😭','😱','🤯','🥳','😏',
+	'👍','👎','👏','🙏','🔥','🎉',
+	'❤️','💩','🤝','🙈'
+];
+
+function setupEmojiFeature() {
+	const block = document.getElementById('player-self');
+	const picker = document.getElementById('emoji-picker');
+	if (!block || !picker) return;
+
+	// Один раз строим сетку эмодзи
+	if (!picker.dataset.built) {
+		EMOJI_LIST.forEach(e => {
+			const b = document.createElement('button');
+			b.type = 'button';
+			b.textContent = e;
+			b.addEventListener('click', (ev) => {
+				ev.stopPropagation();
+				pickEmoji(e);
+			});
+			picker.appendChild(b);
+		});
+		picker.dataset.built = '1';
+	}
+
+	// Тап по своему блоку — показать/скрыть сетку
+	block.addEventListener('click', (ev) => {
+		ev.stopPropagation();
+		picker.classList.toggle('hidden');
+	});
+
+	// Клик вне сетки — закрыть
+	document.addEventListener('click', (ev) => {
+		if (picker.classList.contains('hidden')) return;
+		if (!picker.contains(ev.target) && !block.contains(ev.target)) {
+			picker.classList.add('hidden');
+		}
+	});
+}
+
+function pickEmoji(emoji) {
+	const picker = document.getElementById('emoji-picker');
+	if (picker) picker.classList.add('hidden');
+	showEmoteOn(document.getElementById('player-self'), emoji);
+	if (gameState.isOnlineGame && gameClient && typeof gameClient.sendEmoji === 'function') {
+		gameClient.sendEmoji(emoji);
+	}
+}
+
+// Показать эмоцию крупно на блоке игрока (своём или сопернике) на ~4 сек
+function showEmoteOn(targetEl, emoji) {
+	if (!targetEl) return;
+	let ov = targetEl.querySelector('.emote-overlay');
+	if (!ov) {
+		ov = document.createElement('span');
+		ov.className = 'emote-overlay';
+		targetEl.appendChild(ov);
+	}
+	ov.textContent = emoji;
+	ov.classList.remove('show');
+	void ov.offsetWidth; // перезапуск анимации
+	ov.classList.add('show');
+	clearTimeout(ov._hideT);
+	ov._hideT = setTimeout(() => ov.classList.remove('show'), 4000);
+}
+
+// Эмоция пришла от другого игрока — показываем на его блоке-сопернике
+function handlePlayerEmoji(data) {
+	if (!data || data.playerIndex == null || !data.emoji) return;
+	const sq = document.querySelector('#opp-sq-' + data.playerIndex + ' .opponent-square');
+	showEmoteOn(sq, data.emoji);
+}
+
 // Полноэкранный фейерверк — настоящий салют
 let fireworksIntervalId = null;
 
@@ -3224,7 +3462,7 @@ function createFireworks() {
 	// Контейнер
 	const overlay = document.createElement('div');
 	overlay.id = 'fullscreen-fireworks';
-	overlay.style.cssText = 'position:fixed;inset:0;z-index:9998;overflow:hidden;';
+	overlay.style.cssText = 'position:fixed;inset:0;z-index:9998;overflow:hidden;background:radial-gradient(ellipse at 50% 130%, #241a4d 0%, #0d0a28 55%, #04030f 100%);';
 	document.body.appendChild(overlay);
 
 	// Canvas (под надписью)
@@ -3247,165 +3485,219 @@ function createFireworks() {
 	overlay.appendChild(label);
 
 	const ctx = canvas.getContext('2d');
-	let W = canvas.width = window.innerWidth;
-	let H = canvas.height = window.innerHeight;
+	const dpr = Math.min(window.devicePixelRatio || 1, 2);
+	let W, H;
+	function resize() {
+		W = window.innerWidth;
+		H = window.innerHeight;
+		canvas.width = Math.floor(W * dpr);
+		canvas.height = Math.floor(H * dpr);
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	}
+	resize();
+	window.addEventListener('resize', resize);
 
-	const colors = [
-		'#ff4757','#ffa502','#2ed573','#1e90ff',
-		'#ff6b81','#eccc68','#7bed9f','#70a1ff',
-		'#a29bfe','#fd79a8','#ffeaa7','#55efc4',
-		'#ff9ff3','#f368e0','#48dbfb','#ff6348'
+	// Гармоничные палитры — каждый залп берёт одну
+	const palettes = [
+		['#ff4d6d', '#ff8fa3', '#ffd6e0'],   // роза
+		['#ffd23f', '#ff9505', '#ff6b00'],   // золото-огонь
+		['#48cae4', '#90e0ef', '#caf0f8'],   // лёд
+		['#b388ff', '#e0aaff', '#f4d9ff'],   // фиалка
+		['#80ffdb', '#64dfdf', '#caffbf'],   // мята
+		['#ffffff', '#fff3b0', '#ffd6a5'],   // тёплый свет
+		['#ff5cc6', '#ff8fd0', '#7afcff']    // неон
 	];
+
+	const rand = (a, b) => a + Math.random() * (b - a);
+	const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
 	const particles = [];
 	const rockets = [];
-	let animId;
+	let animId = null;
 
 	class Particle {
-		constructor(x, y, color, vx, vy, size, life) {
-			this.x = x; this.y = y; this.color = color;
-			this.vx = vx; this.vy = vy;
-			this.size = size; this.life = life; this.maxLife = life;
+		constructor(x, y, vx, vy, color, o = {}) {
+			this.x = x; this.y = y; this.px = x; this.py = y;
+			this.vx = vx; this.vy = vy; this.color = color;
+			this.gravity = o.gravity != null ? o.gravity : 0.045;
+			this.drag = o.drag != null ? o.drag : 0.972;
+			this.size = o.size != null ? o.size : rand(1.4, 2.6);
+			this.life = o.life != null ? o.life : rand(55, 95);
+			this.maxLife = this.life;
+			this.twinkle = o.twinkle != null ? o.twinkle : (Math.random() < 0.4);
 		}
 		update() {
-			this.vy += 0.04;
-			this.vx *= 0.985;
-			this.vy *= 0.985;
+			this.px = this.x; this.py = this.y;
+			this.vx *= this.drag;
+			this.vy = this.vy * this.drag + this.gravity;
 			this.x += this.vx;
 			this.y += this.vy;
 			this.life--;
 		}
 		draw() {
 			const a = this.life / this.maxLife;
-			const r = this.size * (0.3 + a * 0.7);
-			// Яркое ядро
-			ctx.globalAlpha = a;
-			ctx.beginPath();
-			ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+			let alpha = a < 0 ? 0 : a;
+			if (this.twinkle && this.life < this.maxLife * 0.55) {
+				alpha *= 0.35 + 0.65 * Math.abs(Math.sin(this.life * 0.7));
+			}
+			ctx.globalAlpha = alpha;
 			ctx.fillStyle = this.color;
-			ctx.fill();
-			// Мягкое свечение
-			ctx.globalAlpha = a * 0.25;
-			ctx.beginPath();
-			ctx.arc(this.x, this.y, r * 4, 0, Math.PI * 2);
-			ctx.fill();
+			ctx.strokeStyle = this.color;
+			const dx = this.x - this.px, dy = this.y - this.py;
+			if (dx * dx + dy * dy < 0.7) {
+				ctx.beginPath();
+				ctx.arc(this.x, this.y, this.size * 0.65, 0, Math.PI * 2);
+				ctx.fill();
+			} else {
+				ctx.lineWidth = this.size;
+				ctx.lineCap = 'round';
+				ctx.beginPath();
+				ctx.moveTo(this.px, this.py);
+				ctx.lineTo(this.x, this.y);
+				ctx.stroke();
+			}
+		}
+	}
+
+	// Разрыв снаряда — разные формы цветка
+	function burst(x, y) {
+		const palette = pick(palettes);
+		// Яркая центральная вспышка
+		particles.push(new Particle(x, y, 0, 0, '#ffffff',
+			{ gravity: 0, drag: 0.7, size: 16, life: 9, twinkle: false }));
+
+		const t = Math.random();
+		if (t < 0.22) {
+			// Кольцо
+			const count = 72, sp = rand(4.5, 6), col = pick(palette);
+			for (let i = 0; i < count; i++) {
+				const ang = (Math.PI * 2 * i) / count;
+				particles.push(new Particle(x, y, Math.cos(ang) * sp, Math.sin(ang) * sp, col,
+					{ life: rand(60, 82), size: rand(1.6, 2.4) }));
+			}
+		} else if (t < 0.44) {
+			// Ива — золотые ниспадающие нити
+			const count = 120, golds = ['#ffd23f', '#ffb703', '#ffe08a', '#fff3b0'];
+			for (let i = 0; i < count; i++) {
+				const ang = rand(0, Math.PI * 2), sp = rand(1.5, 5);
+				particles.push(new Particle(x, y, Math.cos(ang) * sp, Math.sin(ang) * sp - 1.2, pick(golds),
+					{ gravity: 0.085, drag: 0.987, life: rand(115, 155), size: rand(1.6, 2.8), twinkle: true }));
+			}
+		} else if (t < 0.64) {
+			// Двойное кольцо разных цветов
+			const c1 = palette[0], c2 = palette[1];
+			[[3.2, c1], [6, c2]].forEach(([r, c]) => {
+				const count = 62;
+				for (let i = 0; i < count; i++) {
+					const ang = (Math.PI * 2 * i) / count;
+					particles.push(new Particle(x, y, Math.cos(ang) * r, Math.sin(ang) * r, c,
+						{ life: rand(55, 80), size: rand(1.5, 2.3) }));
+				}
+			});
+		} else {
+			// Хризантема — плотный двухцветный шар
+			const count = 150, c1 = pick(palette), c2 = pick(palette);
+			for (let i = 0; i < count; i++) {
+				const ang = rand(0, Math.PI * 2);
+				const sp = rand(1, 7.5) * (0.55 + 0.45 * Math.random());
+				particles.push(new Particle(x, y, Math.cos(ang) * sp, Math.sin(ang) * sp,
+					Math.random() < 0.5 ? c1 : c2,
+					{ life: rand(55, 98), size: rand(1.5, 2.9), twinkle: true }));
+			}
+		}
+		// Белые искры-блёстки поверх любого разрыва
+		for (let i = 0; i < 30; i++) {
+			const a = rand(0, Math.PI * 2), s = rand(0.5, 3.2);
+			particles.push(new Particle(x, y, Math.cos(a) * s, Math.sin(a) * s, '#ffffff',
+				{ life: rand(18, 40), size: rand(0.8, 1.7), gravity: 0.03, twinkle: true }));
 		}
 	}
 
 	class Rocket {
-		constructor(x, targetY) {
-			this.x = x;
-			this.y = H + 10;
-			this.targetY = targetY;
-			this.speed = (H - targetY) / 18; // долетает за ~18 кадров
-			this.color = colors[Math.floor(Math.random() * colors.length)];
+		constructor() {
+			this.x = rand(W * 0.12, W * 0.88);
+			this.targetY = rand(H * 0.1, H * 0.45);
+			this.y = H + 8;
+			this.vy = -rand(9.5, 13);
+			this.color = '#fff7d6';
 		}
 		update() {
-			this.y -= this.speed;
-			// Искры хвоста
-			if (Math.random() > 0.3) {
-				particles.push(new Particle(
-					this.x + (Math.random()-0.5)*4, this.y,
-					'#ffeaa7', (Math.random()-0.5)*0.5, Math.random()*2,
-					1.5, 15
-				));
-			}
-			if (this.y <= this.targetY) {
-				this.explode();
+			this.y += this.vy;
+			this.vy += 0.1; // притормаживает к вершине
+			// Сверкающий хвост
+			particles.push(new Particle(this.x + rand(-1, 1), this.y,
+				rand(-0.4, 0.4), rand(0.4, 1.6), pick(['#ffd98a', '#ffedb0', '#fff']),
+				{ gravity: 0.02, drag: 0.95, life: rand(10, 24), size: rand(1, 2), twinkle: false }));
+			if (this.y <= this.targetY || this.vy >= -1.5) {
+				burst(this.x, this.y);
 				return true;
 			}
 			return false;
 		}
-		explode() {
-			const count = 120 + Math.floor(Math.random() * 60);
-			const c1 = this.color;
-			const c2 = colors[Math.floor(Math.random() * colors.length)];
-			for (let i = 0; i < count; i++) {
-				const angle = (Math.PI * 2 * i) / count + (Math.random()-0.5)*0.4;
-				const speed = 2 + Math.random() * 5;
-				const c = Math.random() > 0.3 ? c1 : c2;
-				particles.push(new Particle(
-					this.x, this.y, c,
-					Math.cos(angle) * speed, Math.sin(angle) * speed,
-					2 + Math.random() * 2.5,
-					50 + Math.floor(Math.random() * 40)
-				));
-			}
-			// Белые блёстки по центру
-			for (let i = 0; i < 40; i++) {
-				const a = Math.random() * Math.PI * 2;
-				const s = 0.5 + Math.random() * 2.5;
-				particles.push(new Particle(
-					this.x, this.y, '#fff',
-					Math.cos(a)*s, Math.sin(a)*s,
-					1 + Math.random(), 25 + Math.floor(Math.random()*15)
-				));
-			}
-		}
 		draw() {
 			ctx.globalAlpha = 1;
+			ctx.fillStyle = this.color;
 			ctx.beginPath();
-			ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
-			ctx.fillStyle = '#fff';
+			ctx.arc(this.x, this.y, 2.3, 0, Math.PI * 2);
 			ctx.fill();
 		}
 	}
 
-	function animate() {
-		// Чёрное небо — полная очистка
+	function frame() {
+		// overlay убрали (выход из игры) — гасим цикл
+		if (!overlay.isConnected) {
+			window.removeEventListener('resize', resize);
+			return;
+		}
+		// Лёгкое затемнение поверх — даёт светящиеся шлейфы
+		ctx.globalCompositeOperation = 'source-over';
 		ctx.globalAlpha = 1;
-		ctx.fillStyle = '#000';
+		ctx.fillStyle = 'rgba(8,6,26,0.22)';
 		ctx.fillRect(0, 0, W, H);
 
+		// Аддитивное свечение
+		ctx.globalCompositeOperation = 'lighter';
 		for (let i = rockets.length - 1; i >= 0; i--) {
 			if (rockets[i].update()) { rockets.splice(i, 1); }
 			else { rockets[i].draw(); }
 		}
 		for (let i = particles.length - 1; i >= 0; i--) {
-			particles[i].update();
-			if (particles[i].life <= 0) { particles.splice(i, 1); }
-			else { particles[i].draw(); }
+			const p = particles[i];
+			p.update();
+			if (p.life <= 0) { particles.splice(i, 1); }
+			else { p.draw(); }
 		}
-
-		animId = requestAnimationFrame(animate);
+		ctx.globalAlpha = 1;
+		animId = requestAnimationFrame(frame);
 	}
 
-	// === Сценарий салюта ===
-	// Волна 1: 3 ракеты одновременно (0ms)
-	function wave1() {
-		for (let i = 0; i < 3; i++) {
-			rockets.push(new Rocket(
-				W * (0.2 + i * 0.3) + (Math.random()-0.5)*40,
-				H * (0.2 + Math.random()*0.15)
-			));
-		}
-	}
-	// Волна 2: ещё 3 ракеты (1.2 сек)
-	function wave2() {
-		for (let i = 0; i < 3; i++) {
-			rockets.push(new Rocket(
-				W * (0.15 + i * 0.35) + (Math.random()-0.5)*50,
-				H * (0.15 + Math.random()*0.2)
-			));
-		}
-	}
-	// Финал: 1 мощная ракета в центр (2.8 сек)
-	function waveFinal() {
-		rockets.push(new Rocket(W * 0.5, H * 0.22));
-	}
+	// Стартовый залп + непрерывная канонада
+	rockets.push(new Rocket(), new Rocket());
+	fireworksIntervalId = setInterval(() => {
+		const n = 1 + Math.floor(Math.random() * 2);
+		for (let i = 0; i < n; i++) rockets.push(new Rocket());
+	}, 430);
 
-	wave1();
-	setTimeout(wave2, 1200);
-	setTimeout(waveFinal, 2800);
-
-	animate();
-
-	// Завершение — ждём пока частицы догорят, потом убираем
+	// Финальный мощный залп
 	setTimeout(() => {
-		cancelAnimationFrame(animId);
-		// Плавно гасим overlay
-		overlay.style.transition = 'opacity 1.5s';
+		for (let i = 0; i < 7; i++) setTimeout(() => rockets.push(new Rocket()), i * 110);
+	}, 6300);
+
+	// Прекращаем запуск новых
+	setTimeout(() => {
+		if (fireworksIntervalId) { clearInterval(fireworksIntervalId); fireworksIntervalId = null; }
+	}, 7400);
+
+	frame();
+
+	// Плавно гасим и убираем
+	setTimeout(() => {
+		overlay.style.transition = 'opacity 1.6s';
 		overlay.style.opacity = '0';
-		setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 1500);
-	}, 7000);
+		setTimeout(() => {
+			if (animId) cancelAnimationFrame(animId);
+			window.removeEventListener('resize', resize);
+			if (overlay.parentNode) overlay.remove();
+		}, 1600);
+	}, 9200);
 }

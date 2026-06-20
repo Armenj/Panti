@@ -106,6 +106,22 @@ class GameClient {
         this.socket.on('error', (error) => {
             if (typeof this.onError === 'function') this.onError(error);
         });
+
+        // Эмоция от другого игрока
+        this.socket.on('player-emoji', (data) => {
+            if (typeof this.onPlayerEmoji === 'function') this.onPlayerEmoji(data);
+        });
+    }
+
+    // Отправка эмоции остальным игрокам в комнате
+    sendEmoji(emoji) {
+        if (this.roomId) {
+            this.socket.emit('player-emoji', {
+                roomId: this.roomId,
+                playerIndex: this.playerIndex,
+                emoji
+            });
+        }
     }
 
     // Вспомогательный метод для записи данных
