@@ -2,6 +2,8 @@ node_modules/
 *.log
 game_rooms/
 .env
+data/
+public/avatars/
 
 ### IntelliJ IDEA ###
 .idea/

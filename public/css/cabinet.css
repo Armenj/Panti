@@ -1,0 +1,607 @@
+/* ==========================================================================
+   panti — стили экрана входа и личного кабинета (загружается ПОСЛЕ style.css)
+   Палитра — в тон игре: зелёное сукно + янтарный акцент.
+   ========================================================================== */
+:root {
+    --cab-bg-1: #2f6f5c;
+    --cab-bg-2: #1d4b40;
+    --cab-bg-3: #133029;
+    --cab-accent: #f0b429;
+    --cab-green: #2c8c6f;
+    --cab-ink: #1d3b34;
+    --cab-card: #ffffff;
+    --cab-muted: #7c8a85;
+}
+
+/* ---------- СПЛЭШ (анти-белый-экран) ---------- */
+#app-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 100070;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at 50% 0%, var(--cab-bg-1) 0%, var(--cab-bg-2) 58%, var(--cab-bg-3) 100%);
+}
+#app-splash.hidden { display: none !important; }
+#app-splash .splash-inner { text-align: center; }
+#app-splash .splash-logo { font-size: 2rem; font-weight: 700; color: #fff; letter-spacing: .5px; margin-bottom: 18px; }
+#app-splash .splash-spinner {
+    width: 36px; height: 36px;
+    margin: 0 auto;
+    border: 4px solid rgba(255, 255, 255, .25);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: cab-spin 0.9s linear infinite;
+}
+
+/* ---------- ЭКРАН ВХОДА ---------- */
+#auth-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    padding-top: max(20px, env(safe-area-inset-top));
+    background: radial-gradient(ellipse at 50% 0%, var(--cab-bg-1) 0%, var(--cab-bg-2) 58%, var(--cab-bg-3) 100%);
+    overflow-y: auto;
+}
+#auth-screen.hidden { display: none !important; }
+
+.auth-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--cab-card);
+    border-radius: 20px;
+    padding: 28px 22px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .35);
+    text-align: center;
+}
+.auth-logo {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--cab-ink);
+    margin-bottom: 18px;
+    letter-spacing: .5px;
+}
+.auth-step h2 {
+    color: var(--cab-ink);
+    font-size: 1.4rem;
+    margin-bottom: 8px;
+}
+.auth-hint {
+    color: var(--cab-muted);
+    font-size: .92rem;
+    margin-bottom: 18px;
+    line-height: 1.45;
+}
+.auth-input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 2px solid #e2e8e5;
+    border-radius: 12px;
+    font-size: 1.05rem;
+    margin-bottom: 12px;
+    background: #f7faf9;
+    color: var(--cab-ink);
+    -webkit-appearance: none;
+}
+.auth-input:focus {
+    outline: none;
+    border-color: var(--cab-green);
+    background: #fff;
+}
+.auth-btn { width: 100%; margin-top: 6px; padding: 14px; font-size: 1.05rem; }
+.auth-error {
+    margin-top: 12px;
+    color: #d64545;
+    font-size: .9rem;
+    background: #fdecec;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+.auth-call-box {
+    background: #f1f8f5;
+    border: 1px dashed var(--cab-green);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 16px;
+}
+.auth-call-box p { color: var(--cab-muted); font-size: .9rem; margin-bottom: 8px; }
+.auth-call-number {
+    display: inline-block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--cab-green);
+    text-decoration: none;
+    letter-spacing: .5px;
+}
+.auth-waiting { color: var(--cab-ink); font-weight: 500; margin: 14px 0; }
+.auth-link {
+    display: inline-block;
+    margin-top: 16px;
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: var(--cab-green);
+    font-size: .95rem;
+    font-weight: 600;
+    text-decoration: underline;
+    padding: 6px;
+}
+.auth-fineprint {
+    margin-top: 8px;
+    color: var(--cab-muted);
+    font-size: .78rem;
+    line-height: 1.4;
+}
+.auth-spinner {
+    width: 38px; height: 38px;
+    margin: 16px auto 0;
+    border: 4px solid #e2e8e5;
+    border-top-color: var(--cab-green);
+    border-radius: 50%;
+    animation: cab-spin 0.9s linear infinite;
+}
+@keyframes cab-spin { to { transform: rotate(360deg); } }
+
+/* ---------- КАБИНЕТ (#game-setup перекрыт) ---------- */
+#game-setup {
+    background: radial-gradient(ellipse at 50% 0%, var(--cab-bg-1) 0%, var(--cab-bg-2) 60%, var(--cab-bg-3) 100%) !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    height: 100dvh;
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#game-setup.hidden { display: none !important; }
+
+.cab-top {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+    flex-wrap: wrap;
+}
+/* В Telegram Mini App сверху есть свой хедер (Закрыть / •••) — отступаем под него,
+   чтобы кнопки Telegram не наезжали на аватар. --tg-top ставит JS из safeAreaInset. */
+body.tg-app .cab-top {
+    padding-top: calc(var(--tg-top, 0px) + 14px);
+}
+/* В игре плавающая шапка (счёт/колода/выход) тоже не должна лезть под хедер Telegram */
+body.tg-app header {
+    padding-top: calc(var(--tg-top, 0px) + 8px) !important;
+}
+body.tg-app .game-layout {
+    padding-top: calc(var(--tg-top, 0px) + 56px) !important;
+}
+.cab-greeting { color: #eafaf4; line-height: 1.2; display: flex; align-items: center; gap: 10px; }
+.cab-greeting-text { line-height: 1.2; }
+.cab-hello { display: block; font-size: .8rem; opacity: .8; }
+#cab-username { font-size: 1.2rem; font-weight: 700; color: #fff; }
+.cab-greeting-avatar {
+    flex: 0 0 auto;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cab-green), #1e6f57);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1.05rem;
+    cursor: pointer;
+    border: 2px solid rgba(255, 255, 255, .35);
+    overflow: hidden;
+}
+.cab-edit-btn {
+    background: rgba(255, 255, 255, .14);
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 50%;
+    width: 34px; height: 34px;
+    padding: 0;
+    font-size: .95rem;
+    box-shadow: none;
+}
+
+/* Фото внутри кружков-аватаров */
+.cab-avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+.cab-avatar-sm { width: 34px; height: 34px; font-size: .85rem; }
+
+/* Аватар на плашке игрока в самой игре */
+.plate-avatar {
+    width: 1.7em; height: 1.7em;
+    border-radius: 50%;
+    object-fit: cover;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* Редактор профиля */
+.pe-avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 16px; }
+.pe-avatar {
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cab-green), #1e6f57);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 2rem;
+    overflow: hidden;
+}
+.cab-top-actions { display: flex; gap: 8px; align-items: center; }
+.cab-chip {
+    background: rgba(255, 255, 255, .14);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 20px;
+    padding: 8px 12px;
+    font-size: .85rem;
+    box-shadow: none;
+}
+.cab-chip-accent { background: var(--cab-accent); color: #3a2c00; border-color: transparent; font-weight: 600; }
+.cab-chip-ghost { padding: 8px 11px; font-size: 1rem; }
+
+.cab-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 6px 14px 16px;
+}
+
+.cab-section { animation: cab-fade .2s ease; }
+@keyframes cab-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.cab-title { color: #fff !important; text-align: left !important; margin: 6px 0 2px !important; font-size: 1.4rem !important; }
+.cab-sub { color: rgba(234, 250, 244, .7); font-size: .9rem; margin-bottom: 14px; }
+
+/* Внутренние блоки разделов на тёмном фоне — белые карточки */
+#cab-quick .computer-mode-section,
+#cab-online .multiplayer-section {
+    background: #fff;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+}
+
+/* ---------- Списки (друзья / люди / лидеры) ---------- */
+.cab-list { display: flex; flex-direction: column; gap: 10px; }
+.cab-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: #fff;
+    border-radius: 14px;
+    padding: 12px 14px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .14);
+}
+.cab-row-me { outline: 2px solid var(--cab-accent); }
+.cab-row-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cab-avatar {
+    flex: 0 0 auto;
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cab-green), #1e6f57);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1rem;
+}
+.cab-rank {
+    flex: 0 0 auto;
+    width: 38px; text-align: center;
+    font-size: 1.3rem; font-weight: 700; color: var(--cab-ink);
+}
+.cab-row-info { min-width: 0; }
+.cab-row-name { font-weight: 600; color: var(--cab-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cab-row-name em { color: var(--cab-muted); font-style: normal; font-size: .85em; }
+.cab-row-sub { font-size: .82rem; color: var(--cab-muted); }
+.cab-wins {
+    flex: 0 0 auto;
+    text-align: center;
+    font-size: 1.3rem; font-weight: 700; color: var(--cab-green);
+    line-height: 1;
+}
+.cab-wins span { display: block; font-size: .65rem; color: var(--cab-muted); font-weight: 500; }
+
+.cab-row-actions { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+.cab-mini-btn {
+    flex: 0 0 auto;
+    border-radius: 18px;
+    padding: 8px 14px;
+    font-size: .82rem;
+    font-weight: 600;
+    box-shadow: none;
+}
+.cab-mini-accent { background: var(--cab-green); color: #fff; }
+.cab-mini-ghost { background: #eef3f1; color: var(--cab-muted); }
+.cab-mini-danger { background: #fdecec; color: #d64545; }
+
+.cab-empty {
+    text-align: center;
+    color: rgba(234, 250, 244, .75);
+    padding: 30px 16px;
+    font-size: .95rem;
+    line-height: 1.5;
+}
+
+.cab-input {
+    width: 100%;
+    padding: 12px 14px;
+    border: none;
+    border-radius: 12px;
+    font-size: 1rem;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, .92);
+    color: var(--cab-ink);
+    -webkit-appearance: none;
+}
+.cab-input:focus { outline: 2px solid var(--cab-accent); }
+
+/* ---------- Статистика ---------- */
+.stats-content { display: flex; flex-direction: column; gap: 14px; }
+.stats-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .16);
+}
+.stats-card-title { font-weight: 700; color: var(--cab-ink); margin-bottom: 12px; font-size: 1.05rem; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.stat-cell {
+    display: flex; flex-direction: column; align-items: center;
+    background: #f5f9f7; border-radius: 12px; padding: 12px 4px;
+}
+.stat-num { font-size: 1.4rem; font-weight: 700; color: var(--cab-ink); }
+.stat-lbl { font-size: .72rem; color: var(--cab-muted); margin-top: 2px; }
+.stat-win .stat-num { color: #2c9a6f; }
+.stat-loss .stat-num { color: #d64545; }
+
+/* ---------- Нижнее меню ---------- */
+.cab-nav {
+    flex: 0 0 auto;
+    display: flex;
+    background: rgba(13, 33, 27, .96);
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.cab-nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    color: rgba(255, 255, 255, .55);
+    font-size: .68rem;
+    font-weight: 500;
+    padding: 9px 2px;
+}
+.cab-nav-btn .cab-nav-ic { font-size: 1.25rem; filter: grayscale(.4); opacity: .8; }
+.cab-nav-btn.active { color: #fff; }
+.cab-nav-btn.active .cab-nav-ic { filter: none; opacity: 1; }
+.cab-nav-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    width: 26px; height: 3px;
+    border-radius: 3px;
+    background: var(--cab-accent);
+}
+.cab-nav-btn { position: relative; }
+
+/* ---------- Фикс: длинная фамилия в «Общий счёт» (iPhone 13 mini) ---------- */
+/* Имя обрезаем многоточием, чтобы блок счёта не наезжал на плашку игрока */
+.game-score-display .score-name {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@media screen and (max-width: 380px) {
+    .game-score-display .score-name { max-width: 72px; }
+}
+
+/* Кнопка «В главное меню» на экране результатов */
+#exit-to-menu-btn { display: block; margin: 10px auto 0; }
+
+/* Фразы-подколки в пикере эмодзи (на всю ширину сетки) */
+.emoji-picker button.emoji-phrase {
+    grid-column: 1 / -1;
+    font-size: .92rem !important;
+    font-weight: 600;
+    padding: 9px 12px !important;
+    background: #eef6f2 !important;
+    color: #1d3b34;
+    border-radius: 12px;
+    text-align: left;
+}
+.emoji-picker button.emoji-phrase:hover { background: #e0efe8 !important; }
+
+/* Всплывающая фраза-сообщение по центру сверху (видна всегда) */
+#phrase-toast {
+    position: fixed;
+    top: calc(max(var(--tg-top, 0px), env(safe-area-inset-top)) + 58px);
+    left: 50%;
+    transform: translate(-50%, -16px);
+    z-index: 100065;
+    max-width: 86vw;
+    background: #fff;
+    color: #1d3b34;
+    border-radius: 16px;
+    padding: 11px 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .32);
+    font-size: 1rem;
+    font-weight: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .25s cubic-bezier(.2,.9,.3,1.3);
+    white-space: normal;
+    text-align: center;
+}
+#phrase-toast.show { opacity: 1; transform: translate(-50%, 0); }
+#phrase-toast.mine { background: #2c8c6f; color: #fff; }
+#phrase-toast .pt-name { font-weight: 700; opacity: .75; }
+#phrase-toast.mine .pt-name { opacity: .85; }
+
+/* Речевой пузырь фразы над плашкой игрока (устар., фразы теперь всплывашкой) */
+.emote-overlay.phrase {
+    inset: auto;
+    bottom: 112%;
+    left: 50%;
+    transform: translateX(-50%) scale(.4);
+    width: max-content;
+    max-width: 56vw;
+    white-space: normal;
+    font-size: .78rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #1d3b34;
+    background: #fff;
+    padding: 7px 11px;
+    border-radius: 14px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.28);
+    z-index: 30;
+}
+.emote-overlay.phrase.show { transform: translateX(-50%) scale(1); }
+/* хвостик пузыря */
+.emote-overlay.phrase::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #fff;
+}
+
+/* ---------- Индикатор «в сети» ---------- */
+.cab-avatar { position: relative; }
+.cab-dot {
+    position: absolute;
+    right: -1px; bottom: -1px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+}
+.cab-dot.on { background: #34c759; }
+.cab-dot.off { background: #b8c2bd; }
+
+/* ---------- Оверлеи приглашений (по центру) ---------- */
+.cab-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, .55);
+    backdrop-filter: blur(2px);
+}
+.cab-pop {
+    width: 100%;
+    max-width: 320px;
+    background: #fff;
+    border-radius: 18px;
+    padding: 22px 20px;
+    text-align: center;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .4);
+}
+.cab-pop-title { font-size: 1.15rem; font-weight: 700; color: var(--cab-ink); margin: 6px 0 4px; }
+.cab-pop-sub { font-size: .88rem; color: var(--cab-muted); margin-bottom: 16px; }
+.cab-pop-btns { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.cab-pop-cancel {
+    background: none; border: none; box-shadow: none;
+    color: var(--cab-muted); font-size: .9rem; text-decoration: underline; padding: 6px;
+}
+
+/* ---------- Входящее приглашение — по центру экрана ---------- */
+.invite-overlay { z-index: 100060; }
+.invite-pop { animation: invite-pop-in .25s cubic-bezier(.2,.9,.3,1.3); }
+.invite-pop .ib-emoji { font-size: 2.6rem; margin-bottom: 6px; }
+.invite-pop .ib-accept, .invite-pop .ib-decline { width: 100%; }
+@keyframes invite-pop-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
+
+/* ---------- (устар.) Входящий баннер приглашения (сверху) ---------- */
+.invite-banner {
+    position: fixed;
+    top: 0; left: 50%;
+    transform: translate(-50%, -120%);
+    z-index: 100060;
+    width: calc(100% - 20px);
+    max-width: 440px;
+    margin-top: max(10px, env(safe-area-inset-top));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: #fff;
+    border-radius: 16px;
+    padding: 12px 14px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, .35);
+    transition: transform .35s cubic-bezier(.2, .9, .3, 1.2);
+}
+.invite-banner.show { transform: translate(-50%, 0); }
+.ib-info { min-width: 0; text-align: left; }
+.ib-title { font-weight: 700; color: var(--cab-ink); font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-sub { font-size: .8rem; color: var(--cab-muted); }
+.ib-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.ib-accept, .ib-decline { border-radius: 18px; padding: 9px 14px; font-size: .85rem; font-weight: 600; box-shadow: none; }
+.ib-accept { background: var(--cab-green); color: #fff; }
+.ib-decline { background: #eef3f1; color: var(--cab-muted); }
+
+/* ---------- Баннер «ждём возвращения соперника» (в игре) ---------- */
+#opponent-waiting-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100040;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 25, 20, .55);
+    backdrop-filter: blur(2px);
+}
+#opponent-waiting-overlay.show { display: flex; }
+#opponent-waiting-overlay .ow-box {
+    background: #fff;
+    border-radius: 16px;
+    padding: 22px 24px;
+    text-align: center;
+    max-width: 300px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .4);
+}
+#opponent-waiting-overlay .ow-spinner {
+    width: 34px; height: 34px;
+    margin: 0 auto 14px;
+    border: 4px solid #e2e8e5;
+    border-top-color: var(--cab-green);
+    border-radius: 50%;
+    animation: cab-spin 0.9s linear infinite;
+}
+#opponent-waiting-overlay .ow-text { color: var(--cab-ink); font-weight: 500; line-height: 1.4; }
+#opponent-waiting-overlay #ow-leave-btn { display: block; margin: 16px auto 0; }
+
+/* ---------- Фикс iPhone: крестик «Правил» был под угловыми иконками (z 99999) ---------- */
+#rules-modal { z-index: 100001 !important; }
+#rules-modal .close {
+    z-index: 2;
+    /* увеличенная область нажатия */
+    padding: 6px 12px;
+    margin: -6px -12px;
+    line-height: 1;
+}
+
+/* На широких экранах кабинет — по центру, ограниченной ширины */
+@media (min-width: 760px) {
+    #game-setup { align-items: center; }
+    .cab-top, .cab-body, .cab-nav { width: 100%; max-width: 720px; margin-left: auto; margin-right: auto; }
+}

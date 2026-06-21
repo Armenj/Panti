@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Panti — Админка</title>
+    <link rel="stylesheet" href="/css/admin.css">
+    <meta name="theme-color" content="#1d4b40">
+</head>
+<body>
+<div id="admin-app">
+    <header class="ad-header">
+        <div class="ad-title">🛠 Panti — Админка</div>
+        <button id="ad-refresh" class="ad-btn-ghost" title="Обновить">⟳</button>
+    </header>
+
+    <!-- вход прямо в админке -->
+    <div id="ad-login" class="ad-noaccess hidden">
+        <div class="ad-noaccess-box">
+            <div id="ad-login-phone">
+                <h2>Вход в админку</h2>
+                <p>Войдите номером администратора — подтверждение звонком.</p>
+                <input id="ad-phone" class="ad-input" type="tel" inputmode="tel" placeholder="+7 999 123-45-67">
+                <button id="ad-login-start" class="ad-btn">Получить звонок</button>
+            </div>
+            <div id="ad-login-wait" class="hidden">
+                <h2>Подтверждение</h2>
+                <div id="ad-call-box"><p>Позвоните на номер (звонок сбросится сам):</p>
+                    <a id="ad-call-number" class="ad-call-number" href="#"></a></div>
+                <p id="ad-login-wait-text">Ожидаем звонок…</p>
+            </div>
+            <div id="ad-login-error" class="ad-login-error hidden"></div>
+        </div>
+    </div>
+
+    <!-- залогинен, но не админ -->
+    <div id="ad-noaccess" class="ad-noaccess hidden">
+        <div class="ad-noaccess-box">
+            <h2>Нет доступа</h2>
+            <p>Этот аккаунт не администратор.</p>
+            <button id="ad-logout" class="ad-btn">Войти другим номером</button>
+        </div>
+    </div>
+
+    <main id="ad-main" class="hidden">
+        <!-- Дашборд -->
+        <section class="ad-dash" id="ad-dash"></section>
+
+        <!-- Вкладки -->
+        <nav class="ad-tabs">
+            <button class="ad-tab active" data-tab="users">Пользователи</button>
+            <button class="ad-tab" data-tab="rooms">Игры</button>
+            <button class="ad-tab" data-tab="broadcast">Рассылка</button>
+        </nav>
+
+        <section id="ad-tab-users" class="ad-section">
+            <input id="ad-user-search" class="ad-input" placeholder="Поиск по имени или номеру…">
+            <div id="ad-users" class="ad-list"></div>
+        </section>
+
+        <section id="ad-tab-rooms" class="ad-section hidden">
+            <div class="ad-hint">Активные игровые комнаты прямо сейчас.</div>
+            <div id="ad-rooms" class="ad-list"></div>
+        </section>
+
+        <section id="ad-tab-broadcast" class="ad-section hidden">
+            <div class="ad-hint">Сообщение получат все пользователи, входившие через Telegram.</div>
+            <textarea id="ad-bc-text" class="ad-textarea" rows="5" placeholder="Текст сообщения для всех игроков…"></textarea>
+            <button id="ad-bc-send" class="ad-btn">Отправить всем</button>
+            <div id="ad-bc-result" class="ad-bc-result"></div>
+        </section>
+    </main>
+</div>
+<script src="/js/admin.js"></script>
+</body>
+</html>

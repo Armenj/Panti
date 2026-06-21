@@ -1,7 +1,11 @@
 // Клиентская часть для работы с Socket.io
 class GameClient {
     constructor() {
-        this.socket = io();
+        // Передаём токен авторизации в handshake — сервер свяжет игрока с аккаунтом
+        // (для записи статистики онлайн-матчей).
+        let authToken = null;
+        try { authToken = localStorage.getItem('panti_auth') || null; } catch (e) {}
+        this.socket = io({ auth: { token: authToken } });
         this.roomId = null;
         this.playerId = null;
         this.playerIndex = null;
@@ -24,6 +28,16 @@ class GameClient {
     }
 
     setupSocketListeners() {
+        // Автоматическое восстановление при переподключении сокета (свернули Mini App,
+        // потеряли сеть и т.п.): как только связь вернулась — заново входим в свою комнату
+        // и получаем актуальное состояние (например, начатый соперником новый раунд).
+        this.socket.on('connect', () => {
+            if (this._everConnected && this.roomId) {
+                this.socket.emit('reconnect-to-game', { roomId: this.roomId, playerId: this.playerId });
+            }
+            this._everConnected = true;
+        });
+
         // Создание комнаты
         this.socket.on('room-created', (data) => {
             this.updateLocalData(data);
@@ -111,6 +125,31 @@ class GameClient {
         this.socket.on('player-emoji', (data) => {
             if (typeof this.onPlayerEmoji === 'function') this.onPlayerEmoji(data);
         });
+
+        // --- Приглашения в онлайн-игру ---
+        this.socket.on('game-invite', (data) => {            // пришло приглашение
+            if (typeof this.onGameInvite === 'function') this.onGameInvite(data);
+        });
+        this.socket.on('invite-sent', (data) => {            // моё приглашение ушло, ждём ответа
+            this.roomId = data.roomId;
+            this.playerId = data.playerId;
+            this.playerIndex = data.playerIndex;
+            if (typeof this.onInviteSent === 'function') this.onInviteSent(data);
+        });
+        this.socket.on('invite-declined', (data) => {
+            if (typeof this.onInviteDeclined === 'function') this.onInviteDeclined(data);
+        });
+        this.socket.on('invite-expired', (data) => {
+            if (typeof this.onInviteExpired === 'function') this.onInviteExpired(data);
+        });
+        this.socket.on('invite-failed', (data) => {
+            if (typeof this.onInviteFailed === 'function') this.onInviteFailed(data);
+        });
+
+        // Презенс в реальном времени (кто-то зашёл/вышел)
+        this.socket.on('presence', (data) => {
+            if (typeof this.onPresence === 'function') this.onPresence(data);
+        });
     }
 
     // Отправка эмоции остальным игрокам в комнате
@@ -134,8 +173,18 @@ class GameClient {
     }
 
     // Методы отправки данных на сервер
-    createRoom(playerName, format) {
-        this.socket.emit('create-room', { playerName, format: format || '1v1' });
+    createRoom(playerName, format, targetScore) {
+        this.socket.emit('create-room', { playerName, format: format || '1v1', targetScore: targetScore || 21 });
+    }
+
+    // Пригласить друга (онлайн) — сервер создаёт комнату и шлёт другу уведомление
+    inviteFriend(friendId, targetScore) {
+        this.socket.emit('invite-friend', { friendId, targetScore: targetScore || 21 });
+    }
+
+    // Ответ на приглашение (принять/отклонить)
+    respondInvite(inviteId, accept) {
+        this.socket.emit('invite-response', { inviteId, accept: !!accept });
     }
 
     joinRoom(roomId, playerName) {

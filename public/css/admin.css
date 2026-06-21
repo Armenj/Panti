@@ -1,0 +1,75 @@
+/* panti — админка */
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+    background: #0f201b;
+    color: #e8f3ee;
+    -webkit-font-smoothing: antialiased;
+}
+.hidden { display: none !important; }
+
+.ad-header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+    background: #14302a;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.ad-title { font-weight: 700; font-size: 1.1rem; }
+.ad-btn-ghost { background: rgba(255,255,255,.12); border: none; color: #fff; width: 38px; height: 38px; border-radius: 10px; font-size: 1.2rem; cursor: pointer; }
+
+.ad-noaccess { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
+.ad-noaccess-box { text-align: center; max-width: 320px; }
+.ad-btn {
+    display: inline-block; margin-top: 12px;
+    background: #2c8c6f; color: #fff; border: none; border-radius: 12px;
+    padding: 12px 20px; font-size: 1rem; font-weight: 600; cursor: pointer; text-decoration: none;
+}
+
+main { padding: 14px; max-width: 760px; margin: 0 auto; }
+
+/* дашборд */
+.ad-dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; margin-bottom: 16px; }
+.ad-stat { background: #1a3a32; border-radius: 12px; padding: 12px 8px; text-align: center; }
+.ad-stat-v { font-size: 1.5rem; font-weight: 700; color: #fff; }
+.ad-stat-l { font-size: .72rem; color: #9fbab0; margin-top: 2px; }
+
+/* табы */
+.ad-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.ad-tab { flex: 1; background: #1a3a32; border: none; color: #9fbab0; border-radius: 10px; padding: 10px; font-size: .9rem; font-weight: 600; cursor: pointer; }
+.ad-tab.active { background: #2c8c6f; color: #fff; }
+
+.ad-input, .ad-textarea {
+    width: 100%; padding: 12px 14px; border: 1px solid rgba(255,255,255,.12);
+    border-radius: 10px; background: #14302a; color: #fff; font-size: 1rem; margin-bottom: 12px;
+}
+.ad-textarea { resize: vertical; font-family: inherit; }
+.ad-hint { color: #9fbab0; font-size: .85rem; margin-bottom: 10px; }
+
+.ad-list { display: flex; flex-direction: column; gap: 10px; }
+.ad-empty { text-align: center; color: #9fbab0; padding: 24px; }
+
+.ad-card { background: #16332c; border-radius: 14px; padding: 12px 14px; }
+.ad-card-head { display: flex; gap: 12px; align-items: center; }
+.ad-av {
+    position: relative; flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%;
+    background: linear-gradient(135deg,#2c8c6f,#1e6f57); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; overflow: hidden;
+}
+.ad-av-img { width: 100%; height: 100%; object-fit: cover; }
+.ad-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; background: #34c759; border: 2px solid #16332c; }
+.ad-card-info { min-width: 0; }
+.ad-card-name { font-weight: 600; }
+.ad-badge { background: #f0b429; color: #3a2c00; font-size: .68rem; padding: 1px 6px; border-radius: 8px; font-weight: 700; vertical-align: middle; }
+.ad-card-sub { font-size: .78rem; color: #9fbab0; }
+.ad-card-stats { font-size: .82rem; color: #cfe3db; margin: 8px 0; }
+.ad-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ad-mini { background: #234a40; border: none; color: #e8f3ee; border-radius: 8px; padding: 7px 12px; font-size: .8rem; font-weight: 600; cursor: pointer; }
+.ad-danger { background: #5a2330; color: #ffd7df; }
+
+.ad-bc-result { margin-top: 12px; color: #9fbab0; font-size: .9rem; }
+
+.ad-login-error { margin-top: 10px; color: #ffd7df; background: #5a2330; border-radius: 8px; padding: 8px 10px; font-size: .9rem; }
+#ad-call-box { background: #16332c; border: 1px dashed #2c8c6f; border-radius: 12px; padding: 14px; margin: 12px 0; }
+.ad-call-number { display: inline-block; font-size: 1.4rem; font-weight: 700; color: #4fd6a8; text-decoration: none; margin-top: 6px; }

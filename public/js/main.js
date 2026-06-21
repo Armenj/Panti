@@ -511,13 +511,16 @@ function setupMultiplayerListeners() {
 	gameClient.onKicked = handleKicked;
 	gameClient.onLobbyUpdated = handleLobbyUpdated;
 	gameClient.onPlayerEmoji = handlePlayerEmoji;
+	gameClient.onPlayerReconnected = handlePlayerReconnected;
 }
 
 function createRoom() {
 	const playerName = elements.createNameInput.value.trim() || 'Игрок 1';
 	const format = document.querySelector('input[name="online-format"]:checked');
 	const formatValue = format ? format.value : '1v1';
-	gameClient.createRoom(playerName, formatValue);
+	const targetInput = document.querySelector('input[name="online-target-score"]:checked');
+	const targetScore = targetInput ? (parseInt(targetInput.value, 10) || 21) : 21;
+	gameClient.createRoom(playerName, formatValue, targetScore);
 	showNotification('Создание игры...', 'info');
 }
 
@@ -707,6 +710,16 @@ function handleRoomJoined(data) {
 
 function handleGameStart(newGameState) {
 	console.log("Получено событие game-start", newGameState);
+	hideOpponentWaiting();
+
+	// Реконнект на экран результатов: если раунд уже завершён — показываем результаты,
+	// а не игровое поле (иначе после возврата висела бы доска вместо итогов раунда).
+	if (newGameState && newGameState.gameEnded) {
+		updateGameStateFromServer(newGameState);
+		displayResults();
+		showSection(gameSections.gameResults);
+		return;
+	}
 
 	// Обновляем локальное состояние игры
 	updateGameStateFromServer(newGameState);
@@ -740,6 +753,9 @@ function handleGameStart(newGameState) {
 }
 
 function handleGameUpdate(newGameState) {
+	// Любое обновление = игра активна, баннер ожидания соперника убираем
+	hideOpponentWaiting();
+
 	// Обновляем локальное состояние игры
 	updateGameStateFromServer(newGameState);
 
@@ -802,19 +818,70 @@ function updateGameStateFromServer(newState) {
 	}
 }
 
+let opponentWaitTimer = null;
+
+// Баннер «ждём возвращения соперника» (создаётся лениво)
+function showOpponentWaiting(text) {
+	let el = document.getElementById('opponent-waiting-overlay');
+	if (!el) {
+		el = document.createElement('div');
+		el.id = 'opponent-waiting-overlay';
+		el.innerHTML = '<div class="ow-box"><div class="ow-spinner"></div><div class="ow-text"></div>'
+			+ '<button id="ow-leave-btn" class="secondary-btn">Выйти в меню</button></div>';
+		document.body.appendChild(el);
+		el.querySelector('#ow-leave-btn').addEventListener('click', () => {
+			hideOpponentWaiting();
+			performReset(); // в 1v1 это удалит комнату на сервере
+		});
+	}
+	el.querySelector('.ow-text').textContent = text;
+	el.classList.add('show');
+}
+function hideOpponentWaiting() {
+	const el = document.getElementById('opponent-waiting-overlay');
+	if (el) el.classList.remove('show');
+	if (opponentWaitTimer) { clearTimeout(opponentWaitTimer); opponentWaitTimer = null; }
+}
+
 function handlePlayerDisconnected(data) {
 	const disconnectedPlayerIndex = data.disconnectedPlayerIndex;
-	const playerName = gameState.players[disconnectedPlayerIndex].name;
+	const playerName = (gameState.players[disconnectedPlayerIndex] || {}).name || 'Соперник';
 
-	showNotification(`Игрок ${playerName} отключился от игры`, 'error');
-
-	// Обновляем состояние игры
+	// Обновляем состояние игры (но НЕ выходим — ждём возвращения соперника)
 	updateGameStateFromServer(data.gameState);
 
-	// Возвращаемся к экрану настройки
-	setTimeout(() => {
-		performReset();
-	}, 3000);
+	// Баннер «ждём соперника» нужен ТОЛЬКО во время активной партии. Если мы уже в
+	// кабинете/на результатах или матч завершён — игнорируем (иначе оверлей висит зря).
+	const boardVisible = !gameSections.gameBoard.classList.contains('hidden');
+	const matchOver = gameState.gameEnded || (gameState.matchWinner !== null && gameState.matchWinner !== undefined);
+	if (!boardVisible || matchOver) {
+		hideOpponentWaiting();
+		return;
+	}
+
+	// Если игра уже на доске — показываем баннер ожидания, держим стол
+	showOpponentWaiting(`${playerName} отключился. Ждём возвращения…`);
+
+	// Через 3 минуты, если не вернулся — предлагаем выйти в кабинет
+	if (opponentWaitTimer) clearTimeout(opponentWaitTimer);
+	opponentWaitTimer = setTimeout(() => {
+		showOpponentWaiting(`${playerName} не вернулся.`);
+		showNotification('Соперник не вернулся в игру', 'error');
+		setTimeout(() => { hideOpponentWaiting(); performReset(); }, 4000);
+	}, 3 * 60 * 1000);
+}
+
+function handlePlayerReconnected(data) {
+	hideOpponentWaiting();
+	updateGameStateFromServer(data.gameState);
+	// Перерисовываем доску из актуального состояния
+	if (!gameSections.gameBoard.classList.contains('hidden')) {
+		renderGameState();
+		updateActivePlayerUI();
+	}
+	const idx = data.reconnectedPlayerIndex;
+	const name = (gameState.players[idx] || {}).name || 'Соперник';
+	showNotification(`${name} вернулся в игру`, 'success');
 }
 
 function handleOpponentLeft(data) {
@@ -890,15 +957,36 @@ function showNotification(message, type = 'info') {
 }
 
 function updatePlayerNames() {
+	const selfAvatarEl = document.querySelector('#player-self .player-self-avatar');
+	let selfAvatarUrl = null;
 	if (gameState.isOnlineGame) {
 		const myIndex = gameState.playerIndex != null ? gameState.playerIndex : 0;
 		const myPlayer = gameState.players[myIndex];
 		if (myPlayer && elements.playerName) {
 			elements.playerName.textContent = `${myPlayer.name} (Вы)`;
 		}
+		if (myPlayer) selfAvatarUrl = myPlayer.avatar || null;
 		// Opponent names are shown in their squares, rendered by renderOpponents()
 	} else {
 		if (elements.playerName) elements.playerName.textContent = 'Вы';
+		// В игре против компьютера показываем аватар залогиненного игрока (если есть)
+		const u = (window.PantiAuth && PantiAuth.getUser) ? PantiAuth.getUser() : null;
+		selfAvatarUrl = u ? u.avatarUrl : null;
+	}
+	setPlateAvatar(selfAvatarEl, selfAvatarUrl, '🙂');
+}
+
+// Ставит на плашку игрока аватар-фото (если есть) либо эмодзи-заглушку
+function setPlateAvatar(el, url, emoji) {
+	if (!el) return;
+	if (url) {
+		if (el.dataset.avatarUrl !== url) {
+			el.dataset.avatarUrl = url;
+			el.innerHTML = `<img class="plate-avatar" src="${url}" alt="">`;
+		}
+	} else {
+		if (el.dataset.avatarUrl) delete el.dataset.avatarUrl;
+		el.textContent = emoji;
 	}
 }
 
@@ -994,7 +1082,7 @@ function buildOpponentSquare(opp) {
     // Emoji avatar
     const emojiEl = document.createElement('span');
     emojiEl.className = 'opp-emoji';
-    emojiEl.textContent = getOpponentEmoji(opp);
+    setPlateAvatar(emojiEl, opp.avatar, getOpponentEmoji(opp));
     div.appendChild(emojiEl);
 
     // Name at the bottom of the square
@@ -1047,9 +1135,9 @@ function updateOpponentSquare(wrapperEl, opp) {
     const collectedBadge = wrapperEl.querySelector('.opp-collected-badge');
     if (collectedBadge) collectedBadge.textContent = collectedCount;
 
-    // Update emoji
+    // Update avatar/emoji
     const emojiEl = wrapperEl.querySelector('.opp-emoji');
-    if (emojiEl) emojiEl.textContent = getOpponentEmoji(opp);
+    if (emojiEl) setPlateAvatar(emojiEl, opp.avatar, getOpponentEmoji(opp));
 
     // Update name
     const nameEl = wrapperEl.querySelector('.opponent-sq-name');
@@ -2389,6 +2477,18 @@ function endGame() {
 		gameState.totalScores[i] += p.score;
 	});
 
+	// Запись статистики игры против компьютера (один раз, когда матч завершён)
+	if (!gameState._compStatRecorded) {
+		const playerWon = gameState.totalScores[0] >= gameState.targetScore;
+		const compWon = gameState.totalScores[1] >= gameState.targetScore;
+		if (playerWon || compWon) {
+			gameState._compStatRecorded = true;
+			if (window.PantiAuth && typeof window.PantiAuth.reportComputerResult === 'function') {
+				window.PantiAuth.reportComputerResult(playerWon);
+			}
+		}
+	}
+
 	// Отобразить результаты
 	displayResults();
 
@@ -2707,6 +2807,7 @@ function startGame() {
 	// Сбрасываем счет и номер раунда
 	gameState.totalScores = [0, 0];
 	gameState.roundNumber = 1;
+	gameState._compStatRecorded = false;
 
 	// Инициализировать игру напрямую
 	initializeGame();
@@ -2826,6 +2927,8 @@ function resetGame() {
 
 // Функция для фактического сброса игры
 function performReset() {
+	hideOpponentWaiting();
+
 	// Уведомить сервер о выходе (если онлайн-игра)
 	if (gameState.isOnlineGame && gameClient) {
 		gameClient.leaveGame();
@@ -3145,6 +3248,11 @@ function setupEventListeners() {
 		// Заменяем обработчик на новую функцию
 		elements.newGameBtn.addEventListener('click', handleNewGameClick);
 	}
+	const exitToMenuBtn = document.getElementById('exit-to-menu-btn');
+	if (exitToMenuBtn) {
+		// Явный выход в главное меню с экрана результатов (без подтверждения — раунд уже сыгран)
+		exitToMenuBtn.addEventListener('click', () => { hideOpponentWaiting(); performReset(); });
+	}
 
 	// Щелчок вне модального окна
 	window.addEventListener('click', (event) => {
@@ -3269,10 +3377,19 @@ function preloadCardImages() {
 	}
 	paths.forEach(src => { const im = new Image(); im.src = src; });
 }
+// Предзагрузку карт (~1.2 МБ) запускаем в простое после загрузки страницы,
+// чтобы НЕ конкурировать с критичными CSS/JS при первом открытии.
+function schedulePreloadCards() {
+	if (typeof requestIdleCallback === 'function') {
+		requestIdleCallback(preloadCardImages, { timeout: 4000 });
+	} else {
+		setTimeout(preloadCardImages, 1500);
+	}
+}
 if (document.readyState === 'complete') {
-	preloadCardImages();
+	schedulePreloadCards();
 } else {
-	window.addEventListener('load', preloadCardImages);
+	window.addEventListener('load', schedulePreloadCards);
 }
 
 // Функции отображения карт
@@ -3366,13 +3483,30 @@ const EMOJI_LIST = [
 	'❤️','💩','🤝','🙈'
 ];
 
+// Готовые фразы-подколки (шлются тем же каналом, что и эмодзи)
+const PHRASE_LIST = [
+	'Ходи уже!',
+	'Думай быстрее ⏳',
+	'Да как так?! 😤',
+	'Красава! 👏',
+	'Мне сегодня везёт 😎'
+];
+
 function setupEmojiFeature() {
 	const block = document.getElementById('player-self');
 	const picker = document.getElementById('emoji-picker');
 	if (!block || !picker) return;
 
-	// Один раз строим сетку эмодзи
+	// Один раз строим: сначала фразы (на всю ширину), потом сетку эмодзи
 	if (!picker.dataset.built) {
+		PHRASE_LIST.forEach(p => {
+			const b = document.createElement('button');
+			b.type = 'button';
+			b.className = 'emoji-phrase';
+			b.textContent = p;
+			b.addEventListener('click', (ev) => { ev.stopPropagation(); pickEmoji(p); });
+			picker.appendChild(b);
+		});
 		EMOJI_LIST.forEach(e => {
 			const b = document.createElement('button');
 			b.type = 'button';
@@ -3404,10 +3538,43 @@ function setupEmojiFeature() {
 function pickEmoji(emoji) {
 	const picker = document.getElementById('emoji-picker');
 	if (picker) picker.classList.add('hidden');
-	showEmoteOn(document.getElementById('player-self'), emoji);
+	// Фразы (с буквами) — крупной всплывашкой по центру (на маленькой плашке текст не виден);
+	// эмодзи — крупно на плашке игрока.
+	if (/[A-Za-zА-Яа-я]/.test(emoji)) {
+		showPhraseToast(selfDisplayName(), emoji, true);
+	} else {
+		showEmoteOn(document.getElementById('player-self'), emoji);
+	}
 	if (gameState.isOnlineGame && gameClient && typeof gameClient.sendEmoji === 'function') {
 		gameClient.sendEmoji(emoji);
 	}
+}
+
+function selfDisplayName() {
+	if (gameState.isOnlineGame) {
+		const i = gameState.playerIndex != null ? gameState.playerIndex : 0;
+		return (gameState.players[i] || {}).name || 'Вы';
+	}
+	return 'Вы';
+}
+
+// Всплывающее сообщение-фраза по центру сверху (видно всегда, в отличие от пузыря на плашке)
+function showPhraseToast(name, text, mine) {
+	let t = document.getElementById('phrase-toast');
+	if (!t) {
+		t = document.createElement('div');
+		t.id = 'phrase-toast';
+		document.body.appendChild(t);
+	}
+	t.className = mine ? 'mine' : '';
+	t.innerHTML = '<span class="pt-name"></span><span class="pt-text"></span>';
+	t.querySelector('.pt-name').textContent = name + ': ';
+	t.querySelector('.pt-text').textContent = text;
+	t.classList.remove('show');
+	void t.offsetWidth;
+	t.classList.add('show');
+	clearTimeout(t._hideT);
+	t._hideT = setTimeout(() => t.classList.remove('show'), 4000);
 }
 
 // Показать эмоцию крупно на блоке игрока (своём или сопернике) на ~4 сек
@@ -3420,6 +3587,9 @@ function showEmoteOn(targetEl, emoji) {
 		targetEl.appendChild(ov);
 	}
 	ov.textContent = emoji;
+	// Фраза (есть буквы) показывается как речевой пузырь над плашкой; эмодзи — крупно в плашке
+	const isPhrase = /[A-Za-zА-Яа-я]/.test(emoji);
+	ov.classList.toggle('phrase', isPhrase);
 	ov.classList.remove('show');
 	void ov.offsetWidth; // перезапуск анимации
 	ov.classList.add('show');
@@ -3427,11 +3597,16 @@ function showEmoteOn(targetEl, emoji) {
 	ov._hideT = setTimeout(() => ov.classList.remove('show'), 4000);
 }
 
-// Эмоция пришла от другого игрока — показываем на его блоке-сопернике
+// Эмоция пришла от другого игрока — фраза всплывашкой, эмодзи на его плашке
 function handlePlayerEmoji(data) {
 	if (!data || data.playerIndex == null || !data.emoji) return;
-	const sq = document.querySelector('#opp-sq-' + data.playerIndex + ' .opponent-square');
-	showEmoteOn(sq, data.emoji);
+	if (/[A-Za-zА-Яа-я]/.test(data.emoji)) {
+		const name = (gameState.players[data.playerIndex] || {}).name || 'Соперник';
+		showPhraseToast(name, data.emoji, false);
+	} else {
+		const sq = document.querySelector('#opp-sq-' + data.playerIndex + ' .opponent-square');
+		showEmoteOn(sq, data.emoji);
+	}
 }
 
 // Полноэкранный фейерверк — настоящий салют

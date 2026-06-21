@@ -4,14 +4,15 @@
      поэтому обновление кода лёгкое — но картинки НЕ перекачиваются.
    - IMG_CACHE (долгоживущий): картинки карт/шрифты. Переживает обновления кода,
      меняем имя только если реально меняются сами файлы картинок.
-   HTML/JS — network-first с таймаутом (на медленной сети не висим, отдаём из кэша).
-   Никогда не трогаем /socket.io/. */
-const CODE_VERSION = 'v41';
+   HTML/JS/CSS — stale-while-revalidate (мгновенно из кэша, обновление в фоне).
+   Никогда не трогаем /socket.io/ и /api/. */
+const CODE_VERSION = 'v62';
 const CODE_CACHE = 'odin-code-' + CODE_VERSION;
 const IMG_CACHE = 'odin-img-v2';     // ← менять только при смене файлов картинок
 const SHELL = [
   '/', '/index.html',
-  '/css/style.css', '/js/client.js', '/js/main.js',
+  '/css/style.css', '/css/cabinet.css',
+  '/js/client.js', '/js/main.js', '/js/auth.js',
   '/socket.io/socket.io.js',
   '/icons/icon-192.png', '/icons/icon-512.png'
 ];
@@ -51,38 +52,47 @@ self.addEventListener('fetch', (e) => {
   // но сам realtime-транспорт (/socket.io/?EIO=...) НЕ трогаем.
   if (url.pathname === '/socket.io/socket.io.js') { e.respondWith(cacheFirst(req, CODE_CACHE)); return; }
   if (url.pathname.startsWith('/socket.io/')) return;     // never intercept realtime transport
+  if (url.pathname.startsWith('/api/')) return;           // REST-API всегда из сети, не кэшируем
 
   const isImg = /\.(png|jpe?g|gif|webp|svg|woff2?|ttf)$/.test(url.pathname);
-  const isCss = /\.css$/.test(url.pathname);
 
-  // Картинки/шрифты — cache-first в долгоживущем кэше (обновление кода их не трогает)
+  // Картинки/шрифты/аватары — cache-first в долгоживущем кэше (версия в ?v= бастит аватар)
   if (isImg) { e.respondWith(cacheFirst(req, IMG_CACHE)); return; }
 
-  // CSS — cache-first в кэше кода (обновляется при смене версии)
-  if (isCss) { e.respondWith(cacheFirst(req, CODE_CACHE)); return; }
+  // Навигация (открытие страницы/PWA) — отдельно и БРОНЕБОЙНО: всегда отдаём валидный
+  // HTML, иначе белый экран. Сеть с таймаутом → свежий index; иначе кэш; иначе мини-HTML.
+  if (req.mode === 'navigate') { e.respondWith(handleNavigate(req)); return; }
 
-  // HTML / JS: network-first с таймаутом. На медленной сети fetch не отклоняется,
-  // а висит — без таймаута страница «не грузится вовсе». Через 2.5с отдаём из кэша.
-  e.respondWith(networkFirstWithTimeout(req, 2500));
+  // JS / CSS — stale-while-revalidate (мгновенно из кэша, обновление в фоне).
+  e.respondWith(staleWhileRevalidate(req));
 });
 
-function networkFirstWithTimeout(req, timeoutMs) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (r) => { if (!settled && r) { settled = true; resolve(r); } };
-
-    const timer = setTimeout(() => {
-      caches.match(req).then((c) => { if (c) done(c); });   // кэш-фолбэк по таймауту
-    }, timeoutMs);
-
+// Навигация: сеть (таймаут 2.5с) → кэш index → последний фолбэк (никогда не пусто)
+function handleNavigate(req) {
+  return caches.open(CODE_CACHE).then((cache) => new Promise((resolve) => {
+    let done = false;
+    const finish = (r) => { if (!done && r) { done = true; resolve(r); return true; } return false; };
+    const fallback = () => cache.match('/index.html').then((c) => c || cache.match('/')).then((c) =>
+      finish(c || new Response('<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="1">Загрузка…',
+        { headers: { 'Content-Type': 'text/html; charset=utf-8' } })));
+    const timer = setTimeout(fallback, 2500);
     fetch(req).then((res) => {
       clearTimeout(timer);
-      caches.open(CODE_CACHE).then((c) => c.put(req, res.clone()));
-      done(res);
-    }).catch(async () => {
-      clearTimeout(timer);
-      const cached = await caches.match(req);
-      done(cached || (await caches.match('/index.html')) || Response.error());
-    });
-  });
+      if (res && res.status === 200) cache.put('/index.html', res.clone());
+      if (!finish(res)) fallback();
+    }).catch(() => { clearTimeout(timer); fallback(); });
+  }));
+}
+
+function staleWhileRevalidate(req) {
+  return caches.open(CODE_CACHE).then((cache) =>
+    cache.match(req).then((cached) => {
+      const network = fetch(req).then((res) => {
+        if (res && res.status === 200) cache.put(req, res.clone());
+        return res;
+      }).catch(() => null);
+      // есть кэш → отдаём сразу; нет → сеть; в самом конце — пустой 504, но НЕ undefined
+      return cached || network.then((r) => r || new Response('', { status: 504 }));
+    })
+  );
 }

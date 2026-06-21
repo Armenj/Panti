@@ -1,10 +1,17 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const socketIo = require('socket.io');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const cors = require('cors');
 const fs = require('fs');
+const cookieParser = require('cookie-parser');
+const auth = require('./auth');
+const { mountAuth, getUserByToken, recordOnlineMatch } = auth;
+
+// Активные приглашения в игру: inviteId → { roomId, fromUserId, toUserId, timer }
+const invites = new Map();
 
 const app = express();
 const server = http.createServer(app);
@@ -12,6 +19,87 @@ const io = socketIo(server);
 
 // Включение CORS
 app.use(cors());
+
+// Парсинг тела запросов и cookie (для REST-API авторизации)
+app.use(express.json({ limit: '1mb' })); // запас под загрузку аватара (base64)
+app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
+
+// REST-API: регистрация/авторизация по телефону, пользователи, друзья, статистика
+mountAuth(app);
+
+// ---- Админские роуты, которым нужны live-комнаты / бот (поэтому здесь, не в auth.js) ----
+function adminFromReq(req) {
+    let token = null;
+    const h = req.headers['authorization'];
+    if (h && h.startsWith('Bearer ')) token = h.slice(7);
+    else if (req.cookies && req.cookies.panti_token) token = req.cookies.panti_token;
+    return auth.getAdminUser(token);
+}
+function requireAdminMw(req, res, next) {
+    if (!adminFromReq(req)) return res.status(403).json({ error: 'forbidden' });
+    next();
+}
+
+// live-комнаты
+app.get('/api/admin/rooms', requireAdminMw, (req, res) => {
+    const list = [];
+    for (const [id, gs] of rooms.entries()) {
+        list.push({
+            roomId: id,
+            format: gs.format || '1v1',
+            started: !!gs.gameStarted,
+            ended: !!gs.gameEnded,
+            round: gs.roundNumber || 1,
+            targetScore: gs.targetScore || 21,
+            players: (gs.players || []).map(p => ({ name: p.name, connected: !!p.connected, userId: p.userId || null })),
+            totalScores: gs.totalScores || []
+        });
+    }
+    res.json({ rooms: list, count: list.length });
+});
+
+// закрыть зависшую комнату
+app.post('/api/admin/rooms/:id/close', requireAdminMw, (req, res) => {
+    const id = req.params.id;
+    if (rooms.has(id)) {
+        io.to(id).emit('opponent-left', { playerName: 'Администратор', playerIndex: -1 });
+        rooms.delete(id);
+        deleteRoomFile(id);
+        return res.json({ ok: true });
+    }
+    res.status(404).json({ error: 'not found' });
+});
+
+// рассылка всем пользователям с Telegram через бота
+app.post('/api/admin/broadcast', requireAdminMw, async (req, res) => {
+    const text = (req.body && req.body.text || '').toString().trim();
+    if (!text) return res.status(400).json({ error: 'Пустое сообщение' });
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) return res.status(500).json({ error: 'Нет токена бота' });
+
+    const ids = auth.allTelegramIds();
+    let sent = 0, failed = 0;
+    for (const chatId of ids) {
+        try {
+            await new Promise((resolve) => {
+                const body = JSON.stringify({ chat_id: chatId, text });
+                const r = https.request(`https://api.telegram.org/bot${token}/sendMessage`,
+                    { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+                    (resp) => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { JSON.parse(d).ok ? sent++ : failed++; } catch (e) { failed++; } resolve(); }); });
+                r.on('error', () => { failed++; resolve(); });
+                r.write(body); r.end();
+            });
+            await new Promise(r => setTimeout(r, 40)); // ~25 msg/sec, под лимит Telegram
+        } catch (e) { failed++; }
+    }
+    res.json({ ok: true, total: ids.length, sent, failed });
+});
+
+// страница админки
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
 
 // Обслуживание статических файлов
 app.use(express.static(path.join(__dirname, 'public')));
@@ -154,6 +242,19 @@ function drawCards(deck, count) {
 io.on('connection', (socket) => {
     console.log('Новое соединение:', socket.id);
 
+    // Привязка сокета к аккаунту (если клиент передал токен в handshake)
+    try {
+        const token = socket.handshake && socket.handshake.auth && socket.handshake.auth.token;
+        const u = token ? getUserByToken(token) : null;
+        if (u) {
+            socket.userId = u.id;
+            socket.userName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || null;
+            const becameOnline = auth.setUserOnline(u.id, socket.id);
+            // Презенс в реальном времени: оповещаем всех, что игрок появился в сети
+            if (becameOnline) io.emit('presence', { userId: u.id, online: true });
+        }
+    } catch (e) { /* аноним — играет без статистики */ }
+
     // Создание новой игровой комнаты
     socket.on('create-room', (data) => {
         const playerName = typeof data === 'string' ? data : (data && data.playerName ? data.playerName : 'Игрок 1');
@@ -166,6 +267,8 @@ io.on('connection', (socket) => {
         gameState.players[0].id = socket.id;
         gameState.players[0].name = playerName;
         gameState.players[0].connected = true;
+        gameState.players[0].userId = socket.userId || null;
+        gameState.players[0].avatar = socket.userId ? auth.userAvatarUrl(socket.userId) : null;
 
         rooms.set(roomId, gameState);
         saveRoomToFile(roomId, gameState);
@@ -203,23 +306,9 @@ io.on('connection', (socket) => {
         if (gameState.tableCards.length > 0) {
             console.log(`Перед началом нового раунда в комнате ${roomId} на столе остались ${gameState.tableCards.length} карт`);
 
-            if (gameState.lastPlayerWhoTook) {
-                const playerIndex = gameState.players.findIndex(p => p === gameState.lastPlayerWhoTook);
-                if (playerIndex !== -1) {
-                    console.log(`Передаем карты игроку ${gameState.players[playerIndex].name}`);
-                    gameState.players[playerIndex].collected.push(...gameState.tableCards);
-                } else {
-                    console.warn(`Не найден игрок, соответствующий lastPlayerWhoTook`);
-                    // Если игрок не найден, выбираем случайного
-                    const randomPlayerIndex = Math.floor(Math.random() * gameState.players.length);
-                    gameState.players[randomPlayerIndex].collected.push(...gameState.tableCards);
-                }
-            } else {
-                console.warn(`В комнате ${roomId} нет игрока, последним взявшего карты`);
-                // Если lastPlayerWhoTook не определен, выбираем случайного игрока
-                const randomPlayerIndex = Math.floor(Math.random() * gameState.players.length);
-                gameState.players[randomPlayerIndex].collected.push(...gameState.tableCards);
-            }
+            const lpIdx = resolveLastTakerIndex(gameState);
+            console.log(`Передаем оставшиеся карты игроку ${gameState.players[lpIdx].name}`);
+            gameState.players[lpIdx].collected.push(...gameState.tableCards);
 
             // Очищаем стол
             gameState.tableCards = [];
@@ -232,12 +321,15 @@ io.on('connection', (socket) => {
         // Увеличиваем номер раунда
         gameState.roundNumber++;
 
-        // Сохраняем имена игроков и общий счет
+        // Сохраняем имена игроков, привязку к аккаунту и общий счет
         const numPlayers = gameState.numPlayers || 2;
         const format = gameState.format || '1v1';
-        const playerInfo = gameState.players.map(p => ({ id: p.id, name: p.name, connected: p.connected }));
+        const playerInfo = gameState.players.map(p => ({
+            id: p.id, name: p.name, connected: p.connected, userId: p.userId || null, avatar: p.avatar || null
+        }));
         const totalScores = [...(gameState.totalScores || new Array(numPlayers).fill(0))];
         const roundNumber = gameState.roundNumber;
+        const targetScore = gameState.targetScore || 21;  // НЕ терять выбранную длину (11/21)
 
         const newGameState = initializeGame(numPlayers, format);
 
@@ -245,9 +337,12 @@ io.on('connection', (socket) => {
             newGameState.players[i].id = info.id;
             newGameState.players[i].name = info.name;
             newGameState.players[i].connected = info.connected;
+            newGameState.players[i].userId = info.userId;   // иначе статистика матча не запишется
+            newGameState.players[i].avatar = info.avatar;
         });
         newGameState.totalScores = totalScores;
         newGameState.roundNumber = roundNumber;
+        newGameState.targetScore = targetScore;
         newGameState.gameStarted = true;
         newGameState.currentPlayerIndex = Math.floor(Math.random() * numPlayers);
 
@@ -295,6 +390,8 @@ io.on('connection', (socket) => {
         gameState.players[slotIndex].id = socket.id;
         gameState.players[slotIndex].name = playerName || `Игрок ${slotIndex + 1}`;
         gameState.players[slotIndex].connected = true;
+        gameState.players[slotIndex].userId = socket.userId || null;
+        gameState.players[slotIndex].avatar = socket.userId ? auth.userAvatarUrl(socket.userId) : null;
 
         socket.join(roomId);
         socket.roomId = roomId;
@@ -495,9 +592,101 @@ io.on('connection', (socket) => {
         if (data && data.roomId && data.emoji) {
             socket.to(data.roomId).emit('player-emoji', {
                 playerIndex: data.playerIndex,
-                emoji: String(data.emoji).slice(0, 8)
+                emoji: String(data.emoji).slice(0, 40) // эмодзи или короткая фраза
             });
         }
+    });
+
+    // ====== Приглашение друга в онлайн-игру (1 на 1, с уведомлением) ======
+    socket.on('invite-friend', (data) => {
+        if (!socket.userId) { socket.emit('invite-failed', { reason: 'auth' }); return; }
+        const friendId = parseInt(data && data.friendId, 10);
+        const targetScore = (data && parseInt(data.targetScore, 10) === 11) ? 11 : 21;
+        if (!friendId || friendId === socket.userId) { socket.emit('invite-failed', { reason: 'bad' }); return; }
+
+        const friendSockets = auth.getUserSockets(friendId);
+        if (!friendSockets.length) { socket.emit('invite-failed', { reason: 'offline' }); return; }
+
+        // Создаём комнату 1 на 1, хост — приглашающий
+        const roomId = generateUniqueRoomId();
+        const gameState = initializeGame(2, '1v1');
+        gameState.targetScore = targetScore;
+        gameState.players[0].id = socket.id;
+        gameState.players[0].name = socket.userName || 'Игрок 1';
+        gameState.players[0].connected = true;
+        gameState.players[0].userId = socket.userId;
+        gameState.players[0].avatar = auth.userAvatarUrl(socket.userId);
+        rooms.set(roomId, gameState);
+        saveRoomToFile(roomId, gameState);
+        socket.join(roomId);
+        socket.roomId = roomId;
+
+        const inviteId = uuidv4();
+        const timer = setTimeout(() => {
+            if (invites.has(inviteId)) {
+                invites.delete(inviteId);
+                if (rooms.has(roomId)) {
+                    const gs = rooms.get(roomId);
+                    if (!gs.players[1].connected) { // никто не принял
+                        rooms.delete(roomId);
+                        deleteRoomFile(roomId);
+                        io.to(socket.id).emit('invite-expired', {});
+                        friendSockets.forEach(sid => io.to(sid).emit('invite-expired', { inviteId }));
+                    }
+                }
+            }
+        }, 60 * 1000);
+
+        invites.set(inviteId, { roomId, fromUserId: socket.userId, toUserId: friendId, timer });
+
+        friendSockets.forEach(sid => io.to(sid).emit('game-invite', {
+            inviteId, roomId, fromName: socket.userName || 'Игрок', format: '1v1', targetScore
+        }));
+        socket.emit('invite-sent', { roomId, playerId: socket.id, playerIndex: 0, targetScore });
+        console.log(`Приглашение ${inviteId}: ${socket.userId} → ${friendId}, комната ${roomId}`);
+    });
+
+    socket.on('invite-response', (data) => {
+        const inviteId = data && data.inviteId;
+        const accept = data && data.accept;
+        const inv = inviteId && invites.get(inviteId);
+        if (!inv) { socket.emit('error', { message: 'Приглашение больше не активно' }); return; }
+        if (socket.userId !== inv.toUserId) return; // отвечать может только приглашённый
+
+        clearTimeout(inv.timer);
+        invites.delete(inviteId);
+        const gameState = rooms.get(inv.roomId);
+
+        // Узнаём сокеты пригласившего
+        const fromSockets = auth.getUserSockets(inv.fromUserId);
+
+        if (!accept) {
+            fromSockets.forEach(sid => io.to(sid).emit('invite-declined', { byName: socket.userName || 'Игрок' }));
+            if (gameState) { rooms.delete(inv.roomId); deleteRoomFile(inv.roomId); }
+            return;
+        }
+
+        if (!gameState) {
+            socket.emit('invite-expired', {});
+            return;
+        }
+
+        // Принимаем — занимаем второй слот и стартуем игру
+        gameState.players[1].id = socket.id;
+        gameState.players[1].name = socket.userName || 'Игрок 2';
+        gameState.players[1].connected = true;
+        gameState.players[1].userId = socket.userId;
+        gameState.players[1].avatar = auth.userAvatarUrl(socket.userId);
+        gameState.currentPlayerIndex = Math.floor(Math.random() * 2);
+        gameState.gameStarted = true;
+        rooms.set(inv.roomId, gameState);
+        saveRoomToFile(inv.roomId, gameState);
+        socket.join(inv.roomId);
+        socket.roomId = inv.roomId;
+
+        socket.emit('room-joined', { roomId: inv.roomId, gameState, playerId: socket.id, playerIndex: 1 });
+        io.to(inv.roomId).emit('game-start', gameState);
+        console.log(`Приглашение ${inviteId} принято, игра в комнате ${inv.roomId} началась`);
     });
 
     // Добровольный выход из игры
@@ -537,6 +726,12 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('Отключение:', socket.id);
 
+        // Снимаем присутствие онлайн; если ушёл совсем — оповещаем всех
+        if (socket.userId) {
+            const becameOffline = auth.setUserOffline(socket.userId, socket.id);
+            if (becameOffline) io.emit('presence', { userId: socket.userId, online: false });
+        }
+
         if (socket.roomId && rooms.has(socket.roomId)) {
             const gameState = rooms.get(socket.roomId);
 
@@ -554,17 +749,19 @@ io.on('connection', (socket) => {
                     disconnectedPlayerIndex: playerIndex
                 });
 
-                // Если оба игрока отключились через 30 минут, удаляем комнату
+                // Грейс-период: комната живёт, пока хотя бы один игрок на связи.
+                // Если ВСЕ отключились — удаляем через 3 минуты (окно на возврат).
+                const roomIdAtDisconnect = socket.roomId;
                 setTimeout(() => {
-                    if (rooms.has(socket.roomId)) {
-                        const currentState = rooms.get(socket.roomId);
+                    if (rooms.has(roomIdAtDisconnect)) {
+                        const currentState = rooms.get(roomIdAtDisconnect);
                         if (currentState.players.every(p => !p.connected)) {
-                            rooms.delete(socket.roomId);
-                            deleteRoomFile(socket.roomId);
-                            console.log(`Комната удалена после таймаута: ${socket.roomId}`);
+                            rooms.delete(roomIdAtDisconnect);
+                            deleteRoomFile(roomIdAtDisconnect);
+                            console.log(`Комната удалена после грейс-периода: ${roomIdAtDisconnect}`);
                         }
                     }
-                }, 30 * 60 * 1000); // 30 минут
+                }, 3 * 60 * 1000); // 3 минуты
             }
         }
     });
@@ -698,6 +895,12 @@ io.on('connection', (socket) => {
 
                 console.log(`Переподключение игрока ${socket.id} к комнате ${roomId}`);
 
+                // Уведомляем соперников, что игрок вернулся (снимаем их баннер ожидания)
+                socket.to(roomId).emit('player-reconnected', {
+                    gameState,
+                    reconnectedPlayerIndex: foundPlayerIndex
+                });
+
                 // Если игра началась, отправляем статус игры
                 if (gameState.gameStarted) {
                     socket.emit('game-start', gameState);
@@ -738,6 +941,11 @@ io.on('connection', (socket) => {
                     rooms.set(roomId, loadedGameState);
                     saveRoomToFile(roomId, loadedGameState);
 
+                    socket.to(roomId).emit('player-reconnected', {
+                        gameState: loadedGameState,
+                        reconnectedPlayerIndex: foundPlayerIndex
+                    });
+
                     if (loadedGameState.gameStarted) {
                         socket.emit('game-start', loadedGameState);
                     } else {
@@ -774,20 +982,10 @@ io.on('connection', (socket) => {
 
         // Проверяем, есть ли карты на столе, и если да, передаем их последнему игроку, взявшему карты
         if (gameState.tableCards.length > 0) {
-            if (gameState.lastPlayerWhoTook) {
-                const playerIndex = gameState.players.findIndex(p => p === gameState.lastPlayerWhoTook);
-                if (playerIndex !== -1) {
-                    console.log(`Передаем ${gameState.tableCards.length} оставшихся карт игроку ${gameState.players[playerIndex].name}`);
-                    gameState.players[playerIndex].collected.push(...gameState.tableCards);
-                    gameState.tableCards = [];
-                }
-            } else {
-                // Если нет последнего игрока, взявшего карты, распределяем карты случайным образом
-                const randomPlayerIndex = Math.floor(Math.random() * gameState.players.length);
-                console.log(`Случайно распределяем карты игроку ${gameState.players[randomPlayerIndex].name}`);
-                gameState.players[randomPlayerIndex].collected.push(...gameState.tableCards);
-                gameState.tableCards = [];
-            }
+            const lpIdx = resolveLastTakerIndex(gameState);
+            console.log(`Передаем ${gameState.tableCards.length} оставшихся карт игроку ${gameState.players[lpIdx].name}`);
+            gameState.players[lpIdx].collected.push(...gameState.tableCards);
+            gameState.tableCards = [];
 
             // Сохраняем обновленное состояние комнаты
             rooms.set(roomId, gameState);
@@ -798,6 +996,19 @@ io.on('connection', (socket) => {
         }
     });
 });
+
+// Определяет индекс игрока, последним взявшего карты (надёжно после загрузки из файла).
+// Приоритет: сохранённый индекс → поиск по ссылке (на случай старых комнат) → случайный.
+function resolveLastTakerIndex(gameState) {
+    let idx = (typeof gameState.lastPlayerWhoTookIndex === 'number') ? gameState.lastPlayerWhoTookIndex : -1;
+    if (idx < 0 || idx >= gameState.players.length) {
+        idx = gameState.lastPlayerWhoTook ? gameState.players.findIndex(p => p === gameState.lastPlayerWhoTook) : -1;
+    }
+    if (idx < 0 || idx >= gameState.players.length) {
+        idx = Math.floor(Math.random() * gameState.players.length);
+    }
+    return idx;
+}
 
 // Вспомогательные функции для игровой логики
 function takeCards(gameState, player, handCard, tableCards) {
@@ -818,6 +1029,8 @@ function takeCards(gameState, player, handCard, tableCards) {
     // Добавляем карты в собранную стопку игрока
     player.collected.push(handCard, ...removedTableCards);
     gameState.lastPlayerWhoTook = player;
+    // Индекс надёжнее ссылки на объект: переживает сохранение/загрузку из файла
+    gameState.lastPlayerWhoTookIndex = gameState.players.indexOf(player);
 
     // Обновляем информацию о последней взятке
     gameState.lastTakenCards = [handCard, ...removedTableCards];
@@ -856,12 +1069,10 @@ function endGame(gameState) {
     gameState.gameEnded = true;
     const numPlayers = gameState.numPlayers || 2;
 
-    if (gameState.lastPlayerWhoTook && gameState.tableCards.length > 0) {
-        const playerIndex = gameState.players.findIndex(p => p === gameState.lastPlayerWhoTook);
-        if (playerIndex !== -1) {
-            gameState.players[playerIndex].collected.push(...gameState.tableCards);
-            gameState.tableCards = [];
-        }
+    if (gameState.tableCards.length > 0) {
+        const lpIdx = resolveLastTakerIndex(gameState);
+        gameState.players[lpIdx].collected.push(...gameState.tableCards);
+        gameState.tableCards = [];
     }
 
     calculateScores(gameState);
@@ -883,6 +1094,23 @@ function endGame(gameState) {
             gameState.matchWinner = i;
         }
     });
+
+    // Запись статистики онлайн-матча (один раз, когда определился победитель матча)
+    if (gameState.matchWinner !== null && !gameState.statsRecorded) {
+        gameState.statsRecorded = true;
+        try {
+            const participantIds = gameState.players.map(p => p.userId).filter(Boolean);
+            // Победители: в 2v2 — вся команда победителя, иначе — один игрок
+            let winnerIdxs;
+            if ((gameState.format === '2v2') && numPlayers === 4) {
+                winnerIdxs = [0, 2].includes(gameState.matchWinner) ? [0, 2] : [1, 3];
+            } else {
+                winnerIdxs = [gameState.matchWinner];
+            }
+            const winnerIds = winnerIdxs.map(i => gameState.players[i] && gameState.players[i].userId).filter(Boolean);
+            if (participantIds.length) recordOnlineMatch(participantIds, winnerIds);
+        } catch (e) { console.error('Ошибка записи статистики матча:', e.message); }
+    }
 }
 
 function calculateScores(gameState) {

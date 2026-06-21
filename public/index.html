@@ -3,21 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Одиннадцать - Карточная игра</title>
+    <title>Panti — Карточная игра</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/cabinet.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"></noscript>
     <meta name="theme-color" content="#3a9d7e">
     <link rel="manifest" href="/manifest.json">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Одиннадцать">
+    <meta name="apple-mobile-web-app-title" content="Panti">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+    <script>
+    // Авто-самолечение от «белого экрана»: если приложение не запустилось за 7с
+    // (например, битый кэш Service Worker), один раз чистим кэш+SW и перезагружаем.
+    window.__pantiBooted = false;
+    setTimeout(function () {
+        if (window.__pantiBooted) return;
+        try {
+            if (sessionStorage.getItem('panti_heal')) return; // не зацикливаемся
+            sessionStorage.setItem('panti_heal', '1');
+        } catch (e) {}
+        var reload = function () { try { location.reload(); } catch (e) {} };
+        try {
+            var done = false, go = function () { if (!done) { done = true; reload(); } };
+            if (window.caches && caches.keys) {
+                caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }).then(function () {
+                    if ('serviceWorker' in navigator) {
+                        navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }).then(go, go);
+                    } else go();
+                }, go);
+            } else go();
+            setTimeout(go, 2000);
+        } catch (e) { reload(); }
+    }, 7000);
+    </script>
 </head>
 <body>
+<!-- Сплэш: виден сразу, чтобы не было белого экрана пока грузится/решает auth.js -->
+<div id="app-splash">
+    <div class="splash-inner">
+        <div class="splash-logo">🎴 Panti</div>
+        <div class="splash-spinner"></div>
+    </div>
+</div>
 <div class="container">
     <header>
         <div class="game-info">
@@ -27,135 +60,236 @@
         </div>
     </header>
 
-    <div id="game-setup" class="game-section">
-        <h2>Настройка игры</h2>
-        <div class="game-options">
-            <div class="option-group">
-                <h3>Выберите режим игры:</h3>
-                <div class="radio-group">
-                    <label>
-                        <input type="radio" name="game-mode" value="player-vs-computer" checked>
-                        1 на 1 (против компьютера)
-                    </label>
-                    <label>
-                        <input type="radio" name="game-mode" value="online">
-                        Онлайн игра
-                    </label>
-                </div>
+    <!-- ЭКРАН ВХОДА / РЕГИСТРАЦИИ -->
+    <div id="auth-screen" class="game-section hidden">
+        <div class="auth-card">
+            <div class="auth-logo">🎴 Panti</div>
+
+            <!-- шаг 1: телефон -->
+            <div id="auth-step-phone" class="auth-step">
+                <h2>Вход в игру</h2>
+                <p class="auth-hint">Введите номер телефона. Подтверждение — звонком, код вводить не нужно.</p>
+                <input id="auth-phone" class="auth-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 999 123-45-67">
+                <button id="auth-start-btn" class="primary-btn auth-btn">Продолжить</button>
+                <div id="auth-error" class="auth-error hidden"></div>
+                <button id="auth-guest-btn" class="auth-link">Сыграть без входа против компьютера →</button>
+                <p class="auth-fineprint">Без входа доступна только быстрая игра. Онлайн, друзья и статистика — после входа.</p>
             </div>
 
-            <!-- Блок настроек для игры против компьютера -->
-            <div id="computer-mode-options" class="computer-mode-section">
-                <div class="option-group">
-                    <h3>Сложность:</h3>
-                    <div class="radio-group difficulty-group">
-                        <label class="difficulty-label">
-                            <input type="radio" name="difficulty" value="standard" checked>
-                            <span class="difficulty-option">
-                                <span class="diff-title">Стандарт</span>
-                                <span class="diff-desc">Компьютер играет стратегически</span>
-                            </span>
-                        </label>
-                        <label class="difficulty-label">
-                            <input type="radio" name="difficulty" value="hard">
-                            <span class="difficulty-option">
-                                <span class="diff-title">Сложный</span>
-                                <span class="diff-desc">Компьютер агрессивно охотится за ♣2, ♦10 и крестями</span>
-                            </span>
-                        </label>
-                    </div>
+            <!-- шаг 2: ожидание звонка -->
+            <div id="auth-step-wait" class="auth-step hidden">
+                <h2>Подтверждение</h2>
+                <div id="auth-call-box" class="auth-call-box">
+                    <p>Позвоните на этот номер — звонок бесплатный и сбросится сам:</p>
+                    <a id="auth-call-number" class="auth-call-number" href="#"></a>
                 </div>
-                <div class="option-group">
-                    <h3>Длина игры:</h3>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="target-score" value="21" checked>
-                            До 21 очка
-                        </label>
-                        <label>
-                            <input type="radio" name="target-score" value="11">
-                            До 11 очков (короткая)
-                        </label>
-                    </div>
-                </div>
-                <button id="start-game-btn" class="primary-btn">Начать игру</button>
+                <div class="auth-spinner"></div>
+                <p class="auth-waiting" id="auth-wait-text">Ожидаем звонок…</p>
+                <button id="auth-cancel-btn" class="secondary-btn small-btn">Отмена</button>
             </div>
 
-            <!-- Блок онлайн-игры (скрыт по умолчанию) -->
-            <div id="online-section" class="multiplayer-section hidden">
+            <!-- шаг 3: онбординг (имя обязателен, фамилия по желанию) -->
+            <div id="auth-step-name" class="auth-step hidden">
+                <h2>Знакомимся</h2>
+                <p class="auth-hint">Как вас называть в игре?</p>
+                <input id="auth-firstname" class="auth-input" placeholder="Имя (обязательно)" maxlength="40" autocomplete="given-name">
+                <input id="auth-lastname" class="auth-input" placeholder="Фамилия (по желанию)" maxlength="40" autocomplete="family-name">
+                <button id="auth-name-btn" class="primary-btn auth-btn">Готово</button>
+                <div id="auth-name-error" class="auth-error hidden"></div>
+            </div>
+        </div>
+    </div>
 
-                <!-- Вкладки: Создать / Войти -->
-                <div id="online-action-tabs" class="online-tabs">
-                    <button class="online-tab active" data-tab="create">Создать игру</button>
-                    <button class="online-tab" data-tab="join">Войти по коду</button>
+    <!-- ЛИЧНЫЙ КАБИНЕТ (роль бывшего game-setup — id сохранён для main.js) -->
+    <div id="game-setup" class="game-section hidden">
+        <div class="cab-top">
+            <div class="cab-greeting">
+                <div id="cab-avatar" class="cab-greeting-avatar" title="Редактировать профиль">?</div>
+                <div class="cab-greeting-text">
+                    <span class="cab-hello">Привет,</span>
+                    <strong id="cab-username">Игрок</strong>
                 </div>
+                <button id="cab-edit-profile" class="cab-edit-btn" title="Редактировать профиль" aria-label="Редактировать профиль">✏️</button>
+            </div>
+            <div class="cab-top-actions">
+                <button id="cab-people-btn" class="cab-chip" title="Все игроки">👥 Люди</button>
+                <button id="cab-create-btn" class="cab-chip cab-chip-accent" title="Создать онлайн-игру">➕ Создать игру</button>
+                <button id="cab-logout-btn" class="cab-chip cab-chip-ghost" title="Выйти из аккаунта" aria-label="Выйти из аккаунта">⎋</button>
+            </div>
+        </div>
 
-                <!-- Панель создания игры -->
-                <div id="create-panel" class="online-panel">
-                    <div class="input-group">
-                        <label for="create-name">Ваше имя:</label>
-                        <input type="text" id="create-name" placeholder="Введите имя" maxlength="20">
-                    </div>
-                    <div class="online-format-section">
-                        <p class="format-label">Формат игры:</p>
-                        <div class="online-format-options">
-                            <label class="format-option">
-                                <input type="radio" name="online-format" value="1v1" checked>
-                                <span class="format-option-inner">
-                                    <span class="format-title">1 на 1</span>
-                                    <span class="format-desc">Два игрока</span>
+        <div class="cab-body">
+            <!-- Быстрая игра -->
+            <section id="cab-quick" class="cab-section">
+                <h2 class="cab-title">Быстрая игра</h2>
+                <p class="cab-sub">Сыграй против компьютера</p>
+
+                <div id="computer-mode-options" class="computer-mode-section">
+                    <div class="option-group">
+                        <h3>Сложность:</h3>
+                        <div class="radio-group difficulty-group">
+                            <label class="difficulty-label">
+                                <input type="radio" name="difficulty" value="standard" checked>
+                                <span class="difficulty-option">
+                                    <span class="diff-title">Стандарт</span>
+                                    <span class="diff-desc">Компьютер играет стратегически</span>
                                 </span>
                             </label>
-                            <label class="format-option">
-                                <input type="radio" name="online-format" value="3p">
-                                <span class="format-option-inner">
-                                    <span class="format-title">3 игрока</span>
-                                    <span class="format-desc">Все против всех</span>
-                                </span>
-                            </label>
-                            <label class="format-option">
-                                <input type="radio" name="online-format" value="2v2">
-                                <span class="format-option-inner">
-                                    <span class="format-title">2 на 2</span>
-                                    <span class="format-desc">Командная игра</span>
+                            <label class="difficulty-label">
+                                <input type="radio" name="difficulty" value="hard">
+                                <span class="difficulty-option">
+                                    <span class="diff-title">Сложный</span>
+                                    <span class="diff-desc">Компьютер агрессивно охотится за ♣2, ♦10 и крестями</span>
                                 </span>
                             </label>
                         </div>
                     </div>
-                    <button id="create-game-btn" class="primary-btn">Создать игру</button>
+                    <div class="option-group">
+                        <h3>Длина игры:</h3>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="target-score" value="21" checked>
+                                До 21 очка
+                            </label>
+                            <label>
+                                <input type="radio" name="target-score" value="11">
+                                До 11 очков (короткая)
+                            </label>
+                        </div>
+                    </div>
+                    <button id="start-game-btn" class="primary-btn">Начать игру</button>
                 </div>
+            </section>
 
-                <!-- Панель входа по коду (скрыта по умолчанию) -->
-                <div id="join-panel" class="online-panel hidden">
-                    <div class="input-group">
-                        <label for="join-name">Ваше имя:</label>
-                        <input type="text" id="join-name" placeholder="Введите имя" maxlength="20">
-                    </div>
-                    <div class="input-group">
-                        <label for="room-id">Код комнаты:</label>
-                        <input type="text" id="room-id" placeholder="Например, 123" maxlength="3" inputmode="numeric" pattern="[0-9]*">
-                    </div>
-                    <button id="join-game-btn" class="primary-btn">Войти в игру</button>
-                </div>
+            <!-- Онлайн игра -->
+            <section id="cab-online" class="cab-section hidden">
+                <h2 class="cab-title">Онлайн игра</h2>
+                <p class="cab-sub">Создай игру или войди по коду</p>
 
-                <!-- Информация о созданной комнате (скрыта до создания) -->
-                <div id="room-info" class="room-info hidden">
-                    <p class="room-created-title">Игра создана!</p>
-                    <div class="room-code-row">
-                        <span>Код:</span>
-                        <strong id="display-room-id" class="room-code"></strong>
-                        <button id="copy-code-btn" class="small-btn">Скопировать код</button>
+                <div id="online-section" class="multiplayer-section">
+                    <!-- Вкладки: Создать / Войти -->
+                    <div id="online-action-tabs" class="online-tabs">
+                        <button class="online-tab active" data-tab="create">Создать игру</button>
+                        <button class="online-tab" data-tab="join">Войти по коду</button>
                     </div>
-                    <p class="share-label">Или отправьте ссылку другу:</p>
-                    <div class="share-link">
-                        <input type="text" id="invite-link" readonly>
-                        <button id="copy-link-btn" class="small-btn">Копировать</button>
+
+                    <!-- Панель создания игры -->
+                    <div id="create-panel" class="online-panel">
+                        <div class="input-group">
+                            <label for="create-name">Ваше имя:</label>
+                            <input type="text" id="create-name" placeholder="Введите имя" maxlength="20">
+                        </div>
+                        <div class="online-format-section">
+                            <p class="format-label">Формат игры:</p>
+                            <div class="online-format-options">
+                                <label class="format-option">
+                                    <input type="radio" name="online-format" value="1v1" checked>
+                                    <span class="format-option-inner">
+                                        <span class="format-title">1 на 1</span>
+                                        <span class="format-desc">Два игрока</span>
+                                    </span>
+                                </label>
+                                <label class="format-option">
+                                    <input type="radio" name="online-format" value="3p">
+                                    <span class="format-option-inner">
+                                        <span class="format-title">3 игрока</span>
+                                        <span class="format-desc">Все против всех</span>
+                                    </span>
+                                </label>
+                                <label class="format-option">
+                                    <input type="radio" name="online-format" value="2v2">
+                                    <span class="format-option-inner">
+                                        <span class="format-title">2 на 2</span>
+                                        <span class="format-desc">Командная игра</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="online-format-section">
+                            <p class="format-label">Длина игры:</p>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="online-target-score" value="21" checked>
+                                    До 21 очка
+                                </label>
+                                <label>
+                                    <input type="radio" name="online-target-score" value="11">
+                                    До 11 очков (короткая)
+                                </label>
+                            </div>
+                        </div>
+                        <button id="create-game-btn" class="primary-btn">Создать игру</button>
                     </div>
-                    <p class="waiting-message">⏳ Ожидание игрока...</p>
-                    <button id="refresh-status-btn" class="secondary-btn small-btn">Обновить</button>
+
+                    <!-- Панель входа по коду -->
+                    <div id="join-panel" class="online-panel hidden">
+                        <div class="input-group">
+                            <label for="join-name">Ваше имя:</label>
+                            <input type="text" id="join-name" placeholder="Введите имя" maxlength="20">
+                        </div>
+                        <div class="input-group">
+                            <label for="room-id">Код комнаты:</label>
+                            <input type="text" id="room-id" placeholder="Например, 123" maxlength="3" inputmode="numeric" pattern="[0-9]*">
+                        </div>
+                        <button id="join-game-btn" class="primary-btn">Войти в игру</button>
+                    </div>
+
+                    <!-- Информация о созданной комнате -->
+                    <div id="room-info" class="room-info hidden">
+                        <p class="room-created-title">Игра создана!</p>
+                        <div class="room-code-row">
+                            <span>Код:</span>
+                            <strong id="display-room-id" class="room-code"></strong>
+                            <button id="copy-code-btn" class="small-btn">Скопировать код</button>
+                        </div>
+                        <p class="share-label">Или отправьте ссылку другу:</p>
+                        <div class="share-link">
+                            <input type="text" id="invite-link" readonly>
+                            <button id="copy-link-btn" class="small-btn">Копировать</button>
+                        </div>
+                        <p class="waiting-message">⏳ Ожидание игрока...</p>
+                        <button id="refresh-status-btn" class="secondary-btn small-btn">Обновить</button>
+                    </div>
                 </div>
-            </div>
+            </section>
+
+            <!-- Друзья -->
+            <section id="cab-friends" class="cab-section hidden">
+                <h2 class="cab-title">Друзья</h2>
+                <p class="cab-sub">Здесь только те, кого вы добавили</p>
+                <div id="friends-list" class="cab-list"></div>
+            </section>
+
+            <!-- Статистика -->
+            <section id="cab-stats" class="cab-section hidden">
+                <h2 class="cab-title">Статистика</h2>
+                <div id="stats-content" class="stats-content"></div>
+            </section>
+
+            <!-- Лидеры -->
+            <section id="cab-leaders" class="cab-section hidden">
+                <h2 class="cab-title">Лидеры</h2>
+                <p class="cab-sub">Рейтинг по победам в онлайн-играх</p>
+                <div id="leaders-list" class="cab-list"></div>
+            </section>
+
+            <!-- Люди -->
+            <section id="cab-people" class="cab-section hidden">
+                <h2 class="cab-title">Люди</h2>
+                <p class="cab-sub">Все игроки — добавляйте в друзья</p>
+                <input id="people-search" class="cab-input" placeholder="Поиск по имени…">
+                <div id="people-list" class="cab-list"></div>
+            </section>
         </div>
+
+        <!-- Нижнее меню -->
+        <nav class="cab-nav">
+            <button class="cab-nav-btn active" data-section="cab-quick"><span class="cab-nav-ic">🎮</span>Быстрая</button>
+            <button class="cab-nav-btn" data-section="cab-online"><span class="cab-nav-ic">🌐</span>Онлайн</button>
+            <button class="cab-nav-btn" data-section="cab-friends"><span class="cab-nav-ic">👥</span>Друзья</button>
+            <button class="cab-nav-btn" data-section="cab-stats"><span class="cab-nav-ic">📊</span>Статистика</button>
+            <button class="cab-nav-btn" data-section="cab-leaders"><span class="cab-nav-ic">🏆</span>Лидеры</button>
+        </nav>
     </div>
 
     <div id="game-board" class="game-section hidden">
@@ -204,6 +338,7 @@
         </div>
         <div id="game-winner" class="game-winner-block"></div>
         <button id="new-game-btn" class="primary-btn">Новая игра</button>
+        <button id="exit-to-menu-btn" class="secondary-btn">🏠 В главное меню</button>
     </div>
 
     <!-- Модальное окно правил -->
@@ -267,28 +402,14 @@
     </div>
 </div>
 
+<!-- Telegram Mini App SDK — async, чтобы НЕ блокировать загрузку страницы, если
+     telegram.org недоступен/тормозит (иначе белый экран). auth.js ждёт его с таймаутом. -->
+<script async src="https://telegram.org/js/telegram-web-app.js"></script>
 <!-- Подключение скриптов -->
 <script src="/socket.io/socket.io.js"></script>
 <script src="js/client.js"></script>
 <script src="js/main.js"></script>
-<script>
-// Предзагрузка всех карточных изображений
-(function() {
-    const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
-    const values = ['ace', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king'];
-    const images = [];
-    suits.forEach(suit => {
-        values.forEach(val => {
-            const img = new Image();
-            img.src = `/images/cards/${val}_of_${suit}.png`;
-            images.push(img);
-        });
-    });
-    const back = new Image();
-    back.src = '/images/cards/card_back.png';
-    images.push(back);
-})();
-</script>
+<script src="js/auth.js"></script>
 <script>
 // PWA: регистрация service worker (для установки на телефон и офлайн-кэша)
 if ('serviceWorker' in navigator) {
