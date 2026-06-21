@@ -26,7 +26,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
 // REST-API: регистрация/авторизация по телефону, пользователи, друзья, статистика
-mountAuth(app);
+mountAuth(app, io);
 
 // ---- Админские роуты, которым нужны live-комнаты / бот (поэтому здесь, не в auth.js) ----
 function adminFromReq(req) {
@@ -252,6 +252,11 @@ io.on('connection', (socket) => {
             const becameOnline = auth.setUserOnline(u.id, socket.id);
             // Презенс в реальном времени: оповещаем всех, что игрок появился в сети
             if (becameOnline) io.emit('presence', { userId: u.id, online: true });
+        } else if (token) {
+            // Токен передан, но недействителен (аккаунт слит/удалён, сессия истекла).
+            // Сокет остаётся анонимным → презенс не регистрируется. Просим клиент
+            // перелогиниться и переподключиться с актуальным токеном.
+            socket.emit('auth-invalid');
         }
     } catch (e) { /* аноним — играет без статистики */ }
 
@@ -597,19 +602,31 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ====== Приглашение друга в онлайн-игру (1 на 1, с уведомлением) ======
-    socket.on('invite-friend', (data) => {
-        if (!socket.userId) { socket.emit('invite-failed', { reason: 'auth' }); return; }
-        const friendId = parseInt(data && data.friendId, 10);
-        const targetScore = (data && parseInt(data.targetScore, 10) === 11) ? 11 : 21;
-        if (!friendId || friendId === socket.userId) { socket.emit('invite-failed', { reason: 'bad' }); return; }
+    // ====== Приглашение друзей в онлайн-игру (1 на 1, 3 игрока, 2 на 2) ======
+    // Снять все висящие приглашения, ведущие в комнату (при отмене/удалении)
+    function cancelInvitesForRoom(roomId) {
+        for (const [id, inv] of invites) {
+            if (inv.roomId === roomId) { clearTimeout(inv.timer); invites.delete(id); }
+        }
+    }
 
-        const friendSockets = auth.getUserSockets(friendId);
-        if (!friendSockets.length) { socket.emit('invite-failed', { reason: 'offline' }); return; }
+    // Общий помощник: создать комнату нужного формата с хостом и разослать приглашения
+    function startInvites(format, targetScore, friendIds) {
+        const numPlayers = format === '2v2' ? 4 : format === '3p' ? 3 : 2;
+        const multi = numPlayers > 2;
 
-        // Создаём комнату 1 на 1, хост — приглашающий
+        // нормализуем список: числа, не я, уникальные, не больше чем нужно слотов
+        let ids = (Array.isArray(friendIds) ? friendIds : [friendIds]).map(x => parseInt(x, 10));
+        ids = [...new Set(ids)].filter(id => id && id !== socket.userId).slice(0, numPlayers - 1);
+        if (!ids.length) { socket.emit('invite-failed', { reason: 'bad' }); return; }
+
+        // только онлайн
+        const targets = ids.map(id => ({ id, sockets: auth.getUserSockets(id) })).filter(t => t.sockets.length);
+        if (!targets.length) { socket.emit('invite-failed', { reason: 'offline' }); return; }
+
+        // комната, хост — приглашающий (слот 0)
         const roomId = generateUniqueRoomId();
-        const gameState = initializeGame(2, '1v1');
+        const gameState = initializeGame(numPlayers, format);
         gameState.targetScore = targetScore;
         gameState.players[0].id = socket.id;
         gameState.players[0].name = socket.userName || 'Игрок 1';
@@ -621,29 +638,47 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         socket.roomId = roomId;
 
-        const inviteId = uuidv4();
-        const timer = setTimeout(() => {
-            if (invites.has(inviteId)) {
+        targets.forEach(t => {
+            const u = auth.userById(t.id);
+            const toName = u ? ([u.first_name, u.last_name].filter(Boolean).join(' ').trim() || 'Игрок') : 'Игрок';
+            const inviteId = uuidv4();
+            const timer = setTimeout(() => {
+                if (!invites.has(inviteId)) return;
                 invites.delete(inviteId);
-                if (rooms.has(roomId)) {
+                t.sockets.forEach(sid => io.to(sid).emit('invite-expired', { inviteId }));
+                io.to(socket.id).emit('invite-expired', { multi, name: toName });
+                // 1 на 1: никто не принял — убираем пустую комнату
+                if (!multi && rooms.has(roomId)) {
                     const gs = rooms.get(roomId);
-                    if (!gs.players[1].connected) { // никто не принял
-                        rooms.delete(roomId);
-                        deleteRoomFile(roomId);
-                        io.to(socket.id).emit('invite-expired', {});
-                        friendSockets.forEach(sid => io.to(sid).emit('invite-expired', { inviteId }));
-                    }
+                    if (!gs.players[1].connected) { rooms.delete(roomId); deleteRoomFile(roomId); }
                 }
-            }
-        }, 60 * 1000);
+            }, 60 * 1000);
+            invites.set(inviteId, { roomId, fromUserId: socket.userId, toUserId: t.id, timer, multi, toName });
+            t.sockets.forEach(sid => io.to(sid).emit('game-invite', {
+                inviteId, roomId, fromName: socket.userName || 'Игрок', format, targetScore, multi
+            }));
+        });
 
-        invites.set(inviteId, { roomId, fromUserId: socket.userId, toUserId: friendId, timer });
+        socket.emit('invite-sent', {
+            roomId, playerId: socket.id, playerIndex: 0, targetScore,
+            multi, format, numPlayers, invited: targets.length, gameState
+        });
+        console.log(`Приглашение(${format}): ${socket.userId} → [${targets.map(t => t.id)}], комната ${roomId}`);
+    }
 
-        friendSockets.forEach(sid => io.to(sid).emit('game-invite', {
-            inviteId, roomId, fromName: socket.userName || 'Игрок', format: '1v1', targetScore
-        }));
-        socket.emit('invite-sent', { roomId, playerId: socket.id, playerIndex: 0, targetScore });
-        console.log(`Приглашение ${inviteId}: ${socket.userId} → ${friendId}, комната ${roomId}`);
+    // 1 на 1 (одиночное приглашение — кнопка «Позвать» у друга)
+    socket.on('invite-friend', (data) => {
+        if (!socket.userId) { socket.emit('invite-failed', { reason: 'auth' }); return; }
+        const targetScore = (data && parseInt(data.targetScore, 10) === 11) ? 11 : 21;
+        startInvites('1v1', targetScore, data && data.friendId);
+    });
+
+    // Несколько друзей сразу (3 игрока / 2 на 2 / либо 1 на 1)
+    socket.on('invite-friends', (data) => {
+        if (!socket.userId) { socket.emit('invite-failed', { reason: 'auth' }); return; }
+        const format = (data && data.format === '2v2') ? '2v2' : (data && data.format === '3p') ? '3p' : '1v1';
+        const targetScore = (data && parseInt(data.targetScore, 10) === 11) ? 11 : 21;
+        startInvites(format, targetScore, data && data.friendIds);
     });
 
     socket.on('invite-response', (data) => {
@@ -656,37 +691,55 @@ io.on('connection', (socket) => {
         clearTimeout(inv.timer);
         invites.delete(inviteId);
         const gameState = rooms.get(inv.roomId);
-
-        // Узнаём сокеты пригласившего
         const fromSockets = auth.getUserSockets(inv.fromUserId);
 
         if (!accept) {
-            fromSockets.forEach(sid => io.to(sid).emit('invite-declined', { byName: socket.userName || 'Игрок' }));
-            if (gameState) { rooms.delete(inv.roomId); deleteRoomFile(inv.roomId); }
+            fromSockets.forEach(sid => io.to(sid).emit('invite-declined', {
+                byName: socket.userName || inv.toName || 'Игрок', multi: !!inv.multi
+            }));
+            // 1 на 1: играть больше не с кем — удаляем комнату. Мульти: хост ждёт остальных в лобби.
+            if (gameState && !inv.multi) { rooms.delete(inv.roomId); deleteRoomFile(inv.roomId); }
             return;
         }
 
-        if (!gameState) {
-            socket.emit('invite-expired', {});
-            return;
-        }
+        if (!gameState) { socket.emit('invite-expired', {}); return; }
 
-        // Принимаем — занимаем второй слот и стартуем игру
-        gameState.players[1].id = socket.id;
-        gameState.players[1].name = socket.userName || 'Игрок 2';
-        gameState.players[1].connected = true;
-        gameState.players[1].userId = socket.userId;
-        gameState.players[1].avatar = auth.userAvatarUrl(socket.userId);
-        gameState.currentPlayerIndex = Math.floor(Math.random() * 2);
-        gameState.gameStarted = true;
-        rooms.set(inv.roomId, gameState);
-        saveRoomToFile(inv.roomId, gameState);
+        // Занимаем первый свободный слот
+        let slot = gameState.players.findIndex(p => !p.id);
+        if (slot === -1) slot = gameState.players.findIndex(p => p.id && !p.connected);
+        if (slot === -1) { socket.emit('error', { message: 'Комната уже заполнена' }); return; }
+
+        gameState.players[slot].id = socket.id;
+        gameState.players[slot].name = socket.userName || `Игрок ${slot + 1}`;
+        gameState.players[slot].connected = true;
+        gameState.players[slot].userId = socket.userId;
+        gameState.players[slot].avatar = auth.userAvatarUrl(socket.userId);
         socket.join(inv.roomId);
         socket.roomId = inv.roomId;
 
-        socket.emit('room-joined', { roomId: inv.roomId, gameState, playerId: socket.id, playerIndex: 1 });
-        io.to(inv.roomId).emit('game-start', gameState);
-        console.log(`Приглашение ${inviteId} принято, игра в комнате ${inv.roomId} началась`);
+        const numPlayers = gameState.numPlayers || 2;
+        const connectedCount = gameState.players.filter(p => p.connected).length;
+
+        if (connectedCount >= numPlayers && !gameState.gameStarted) {
+            // Все в сборе — старт. Снимаем оставшиеся приглашения в эту комнату.
+            cancelInvitesForRoom(inv.roomId);
+            gameState.currentPlayerIndex = Math.floor(Math.random() * numPlayers);
+            gameState.gameStarted = true;
+            rooms.set(inv.roomId, gameState);
+            saveRoomToFile(inv.roomId, gameState);
+            socket.emit('room-joined', { roomId: inv.roomId, gameState, playerId: socket.id, playerIndex: slot });
+            io.to(inv.roomId).emit('game-start', gameState);
+            console.log(`Приглашение ${inviteId} принято — комната ${inv.roomId} заполнена, старт`);
+        } else {
+            // Ждём остальных — приглашённый попадает в лобби, хост видит обновление списка
+            rooms.set(inv.roomId, gameState);
+            saveRoomToFile(inv.roomId, gameState);
+            socket.emit('room-joined', { roomId: inv.roomId, gameState, playerId: socket.id, playerIndex: slot });
+            socket.to(inv.roomId).emit('player-joined', {
+                gameState, joinedPlayerIndex: slot, waitingFor: numPlayers - connectedCount
+            });
+            console.log(`Приглашение ${inviteId} принято — слот ${slot}, ждём ещё ${numPlayers - connectedCount}`);
+        }
     });
 
     // Добровольный выход из игры
@@ -701,17 +754,23 @@ io.on('connection', (socket) => {
                 const playerName = gameState.players[playerIndex].name;
                 gameState.players[playerIndex].connected = false;
 
+                // Хост отменяет лобби до старта — снимаем висящие приглашения в эту комнату
+                if (playerIndex === 0 && !gameState.gameStarted) {
+                    cancelInvitesForRoom(socket.roomId);
+                }
+
                 // Уведомляем всех остальных игроков
                 socket.to(socket.roomId).emit('opponent-left', {
                     playerName: playerName,
                     playerIndex: playerIndex
                 });
 
-                // В 1v1 — удаляем комнату сразу
-                if (gameState.format === '1v1' || gameState.players.length === 2) {
+                // В 1v1 — удаляем комнату сразу; либо если хост отменил ещё не начатую мульти-комнату
+                if (gameState.format === '1v1' || gameState.players.length === 2 ||
+                    (playerIndex === 0 && !gameState.gameStarted)) {
                     rooms.delete(socket.roomId);
                     deleteRoomFile(socket.roomId);
-                    console.log(`Комната ${socket.roomId} удалена — игрок вышел из 1v1`);
+                    console.log(`Комната ${socket.roomId} удалена — игрок вышел`);
                 } else {
                     saveRoomToFile(socket.roomId, gameState);
                 }

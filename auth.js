@@ -135,7 +135,7 @@ function smscGetWaitNumber(phoneDigits) {
             fmt: '3'
         });
         const url = `https://smsc.ru/sys/wait_call.php?${params.toString()}`;
-        https.get(url, (res) => {
+        const req = https.get(url, (res) => {
             let body = '';
             res.on('data', (c) => body += c);
             res.on('end', () => {
@@ -147,7 +147,10 @@ function smscGetWaitNumber(phoneDigits) {
                     reject(new Error('SMSC: невалидный ответ'));
                 }
             });
-        }).on('error', reject);
+        });
+        req.on('error', reject);
+        // Жёсткий таймаут — чтобы запрос НИКОГДА не висел (иначе фронт ловит abort → «Нет связи»)
+        req.setTimeout(8000, () => { req.destroy(new Error('SMSC: таймаут')); });
     });
 }
 
@@ -230,6 +233,50 @@ function verifyTelegramSigned(rawQuery) {
     }
 }
 
+// Проверка Telegram Login Widget (вход через Telegram на сайте/в PWA).
+// ВНИМАНИЕ: алгоритм ОТЛИЧАЕТСЯ от Mini App initData:
+// secret_key = SHA256(bot_token); hash = HMAC_SHA256(secret_key, data_check_string).
+function verifyTelegramWidget(data) {
+    if (!data || !data.hash || !TELEGRAM_BOT_TOKEN) return null;
+    try {
+        const pairs = [];
+        for (const k of Object.keys(data)) {
+            if (k === 'hash') continue;
+            if (data[k] === undefined || data[k] === null) continue;
+            pairs.push(`${k}=${data[k]}`);
+        }
+        pairs.sort();
+        const dataCheckString = pairs.join('\n');
+        const secret = crypto.createHash('sha256').update(TELEGRAM_BOT_TOKEN).digest();
+        const calc = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
+        if (calc !== String(data.hash)) return null;
+        // подпись не старше суток
+        const authDate = parseInt(data.auth_date, 10);
+        if (!authDate || (Date.now() / 1000 - authDate) > 86400) return null;
+        return data;
+    } catch (e) {
+        return null;
+    }
+}
+
+// Вход/создание аккаунта по Telegram-пользователю (общий для Mini App и Login Widget).
+// Возвращает { token, user, needsPhoneLink } либо null.
+function loginByTelegramUser(tgUser) {
+    const tgId = tgUser && parseInt(tgUser.id, 10);
+    if (!tgId) return null;
+    let user = Q.userByTgId.get(tgId);
+    if (!user) {
+        const first = (tgUser.first_name || '').toString().slice(0, 40) || 'Игрок';
+        const last = (tgUser.last_name || '').toString().slice(0, 40) || null;
+        const info = Q.insertTgUser.run('tg:' + tgId, tgId, first, last, now());
+        user = Q.userById.get(info.lastInsertRowid);
+    }
+    const token = genToken();
+    Q.insertSession.run(token, user.id, now(), now());
+    const hasRealPhone = user.phone && !String(user.phone).startsWith('tg:');
+    return { token, user: publicUser(user), needsPhoneLink: !hasRealPhone };
+}
+
 // Привязать/объединить телефон с аккаунтом meId (телефон уже ПОДТВЕРЖДЁН — звонком
 // или подписью контакта). Если номер принадлежит другому аккаунту (PWA) — объединяем:
 // тот аккаунт (с историей) остаётся основным, текущий пустой Telegram-аккаунт удаляется.
@@ -247,8 +294,11 @@ function linkPhoneToUser(meId, phone) {
             db.prepare('INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) SELECT ?, friend_id, created_at FROM friends WHERE user_id = ? AND friend_id != ?').run(other.id, me.id, other.id);
             db.prepare('INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) SELECT user_id, ?, created_at FROM friends WHERE friend_id = ? AND user_id != ?').run(other.id, me.id, other.id);
             db.prepare('DELETE FROM friends WHERE user_id = ? OR friend_id = ?').run(me.id, me.id);
+            // Сначала освобождаем telegram_id у текущего аккаунта (защита от UNIQUE),
+            // затем удаляем его и переносим tg на основной (PWA) аккаунт.
+            if (tgId) Q.setTgId.run(null, me.id);
             db.prepare('DELETE FROM users WHERE id = ?').run(me.id);
-            if (tgId) Q.setTgId.run(tgId, other.id);  // telegram_id освобождён удалением me
+            if (tgId) Q.setTgId.run(tgId, other.id);
             return other.id;
         }
         Q.setPhone.run(phone, me.id); // своего номера ещё не было — просто записываем
@@ -372,7 +422,7 @@ function rateLimit(key, max, windowMs) {
     return e.count <= max;
 }
 
-function mountAuth(app) {
+function mountAuth(app, io) {
     // ---- старт ожидания звонка ----
     app.post('/api/auth/phone/wait/start', async (req, res) => {
         const phone = normalizePhone(req.body && req.body.phone);
@@ -479,21 +529,21 @@ function mountAuth(app) {
 
         let tgUser;
         try { tgUser = JSON.parse(parsed.user); } catch (e) { return res.status(400).json({ error: 'bad user' }); }
-        const tgId = tgUser.id;
-        if (!tgId) return res.status(400).json({ error: 'no tg id' });
+        const result = loginByTelegramUser(tgUser);
+        if (!result) return res.status(400).json({ error: 'no tg id' });
+        res.json(result);
+    });
 
-        let user = Q.userByTgId.get(tgId);
-        if (!user) {
-            const first = (tgUser.first_name || '').toString().slice(0, 40) || 'Игрок';
-            const last = (tgUser.last_name || '').toString().slice(0, 40) || null;
-            const info = Q.insertTgUser.run('tg:' + tgId, tgId, first, last, now());
-            user = Q.userById.get(info.lastInsertRowid);
-        }
-
-        const token = genToken();
-        Q.insertSession.run(token, user.id, now(), now());
-        const hasRealPhone = user.phone && !String(user.phone).startsWith('tg:');
-        res.json({ token, user: publicUser(user), needsPhoneLink: !hasRealPhone });
+    // ---- Вход через Telegram Login Widget (сайт/PWA, без звонка) ----
+    app.post('/api/auth/telegram-widget', (req, res) => {
+        const data = req.body && req.body.tgAuth;
+        const parsed = verifyTelegramWidget(data);
+        if (!parsed) return res.status(401).json({ error: 'Неверная подпись Telegram' });
+        const result = loginByTelegramUser({
+            id: parsed.id, first_name: parsed.first_name, last_name: parsed.last_name
+        });
+        if (!result) return res.status(400).json({ error: 'no tg id' });
+        res.json(result);
     });
 
     // ---- привязка номера в Mini App (объединение с PWA-аккаунтом) ----
@@ -807,6 +857,14 @@ function mountAuth(app) {
             });
             tx();
             try { fs.unlinkSync(path.join(AVATAR_DIR, mergeId + '.jpg')); } catch (e) {}
+            // Живые сокеты слитого аккаунта держат старый userId → рвём их,
+            // чтобы переподключились и зарегистрировали презенс под keepId.
+            try {
+                if (io) getUserSockets(mergeId).forEach(sid => {
+                    const s = io.sockets.sockets.get(sid);
+                    if (s) s.disconnect(true);
+                });
+            } catch (e) {}
         } catch (e) {
             console.error('admin merge error:', e.message);
             return res.status(500).json({ error: 'Не удалось объединить: ' + e.message });

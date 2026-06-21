@@ -57,6 +57,8 @@
             <div id="deck-count" title="Колода">52</div>
             <button id="rules-btn" title="Правила игры"><svg viewBox="0 0 512 512" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM216 336l24 0 0-64-24 0c-13.3 0-24-10.7-24-24s10.7-24 24-24l48 0c13.3 0 24 10.7 24 24l0 88 8 0c13.3 0 24 10.7 24 24s-10.7 24-24 24l-80 0c-13.3 0-24-10.7-24-24s10.7-24 24-24zm40-208a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"/></svg></button>
             <button id="restart-btn" title="Выйти" aria-label="Выйти"><svg viewBox="0 0 512 512" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M502.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-128-128c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L402.7 224 192 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l210.7 0-73.4 73.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l128-128zM160 96c17.7 0 32-14.3 32-32s-14.3-32-32-32L96 32C43 32 0 75 0 128L0 384c0 53 43 96 96 96l64 0c17.7 0 32-14.3 32-32s-14.3-32-32-32l-64 0c-17.7 0-32-14.3-32-32l0-256c0-17.7 14.3-32 32-32l64 0z"/></svg></button>
+            <!-- Свёрнутое меню (счёт+правила+выход) — показывается при 3-4 игроках -->
+            <button id="menu-icon" title="Меню" aria-label="Меню: счёт, правила, выход"><svg viewBox="0 0 512 512" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M64 144a48 48 0 1 0 0-96 48 48 0 1 0 0 96zM64 304a48 48 0 1 0 0-96 48 48 0 1 0 0 96zM112 416a48 48 0 1 0 -96 0 48 48 0 1 0 96 0z"/></svg></button>
         </div>
     </header>
 
@@ -68,6 +70,11 @@
             <!-- шаг 1: телефон -->
             <div id="auth-step-phone" class="auth-step">
                 <h2>Вход в игру</h2>
+                <div id="tg-login-box" class="tg-login-box hidden">
+                    <p class="auth-hint">Самый быстрый способ — войдите через Telegram:</p>
+                    <div id="tg-login-btn-wrap"></div>
+                    <div class="auth-or"><span>или по телефону</span></div>
+                </div>
                 <p class="auth-hint">Введите номер телефона. Подтверждение — звонком, код вводить не нужно.</p>
                 <input id="auth-phone" class="auth-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 999 123-45-67">
                 <button id="auth-start-btn" class="primary-btn auth-btn">Продолжить</button>
@@ -218,7 +225,8 @@
                                 </label>
                             </div>
                         </div>
-                        <button id="create-game-btn" class="primary-btn">Создать игру</button>
+                        <button id="invite-friends-btn" class="primary-btn">👥 Позвать друзей</button>
+                        <button id="create-game-btn" class="secondary-btn">Создать по коду</button>
                     </div>
 
                     <!-- Панель входа по коду -->
@@ -236,6 +244,7 @@
 
                     <!-- Информация о созданной комнате -->
                     <div id="room-info" class="room-info hidden">
+                        <button id="cancel-room-btn" class="lobby-back-btn" title="Отменить и вернуться">← Отменить</button>
                         <p class="room-created-title">Игра создана!</p>
                         <div class="room-code-row">
                             <span>Код:</span>

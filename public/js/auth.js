@@ -132,6 +132,7 @@
                 if (lr.ok) {
                     currentUser = lr.data.user; cacheUser(currentUser);
                     applyUser(currentUser);
+                    reconnectSocketWithToken(); // перепривязать сокет к объединённому аккаунту
                     notify('Аккаунт объединён ✓', 'success');
                 } else {
                     notify((lr.data && lr.data.error) || 'Не удалось привязать номер', 'error');
@@ -226,7 +227,61 @@
             const e = $(id); if (e) e.classList.add('hidden');
         });
     }
-    function showAuth() { hideSplash(); hideAllScreens(); $('auth-screen').classList.remove('hidden'); }
+    function showAuth() { hideSplash(); hideAllScreens(); $('auth-screen').classList.remove('hidden'); mountTelegramLoginWidget(); }
+
+    // Кнопка «Войти через Telegram» (Login Widget). В Mini App не нужна — там вход автоматический.
+    function mountTelegramLoginWidget() {
+        if (inTelegram()) return;
+        const wrap = $('tg-login-btn-wrap');
+        const box = $('tg-login-box');
+        if (!wrap || !box || wrap.dataset.mounted) return;
+        wrap.dataset.mounted = '1';
+        const s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://telegram.org/js/telegram-widget.js?22';
+        s.setAttribute('data-telegram-login', 'panty_game_bot');
+        s.setAttribute('data-size', 'large');
+        s.setAttribute('data-radius', '12');
+        s.setAttribute('data-onauth', 'onTelegramAuth(user)');
+        s.setAttribute('data-request-access', 'write');
+        wrap.appendChild(s);
+        box.classList.remove('hidden');
+    }
+
+    // Переподключить сокет с текущим токеном — нужно после слияния аккаунтов,
+    // иначе сокет остаётся привязан к старому (удалённому) userId и презенс не виден.
+    function reconnectSocketWithToken() {
+        try {
+            const tok = getToken();
+            if (window.gameClient && gameClient.socket && tok) {
+                gameClient.socket.auth = { token: tok };
+                gameClient.socket.disconnect().connect();
+            }
+        } catch (e) {}
+    }
+
+    // Глобальный колбэк виджета: Telegram отдаёт объект пользователя с подписью.
+    window.onTelegramAuth = async function (user) {
+        const r = await api('/auth/telegram-widget', { method: 'POST', body: { tgAuth: user } });
+        if (!r.ok || !r.data.token) {
+            authError((r.data && r.data.error) || 'Не удалось войти через Telegram');
+            return;
+        }
+        setToken(r.data.token);
+        clearGuestFlag();
+        currentUser = r.data.user;
+        cacheUser(currentUser);
+        // Переподключаем сокет с токеном (он был анонимным до входа)
+        try {
+            if (window.gameClient && gameClient.socket) {
+                gameClient.socket.auth = { token: r.data.token };
+                gameClient.socket.disconnect().connect();
+            }
+        } catch (e) {}
+        setupCabinet(currentUser);
+        showCabinet();
+        notify('С возвращением, ' + (currentUser.firstName || currentUser.name || 'игрок') + '!', 'success');
+    };
     function showCabinet() { hideSplash(); hideAllScreens(); $('game-setup').classList.remove('hidden'); }
     function inActiveGame() {
         return !$('game-board').classList.contains('hidden') || !$('game-results').classList.contains('hidden');
@@ -565,6 +620,76 @@
         o.addEventListener('click', e => { if (e.target === o) removeEl('invite-chooser'); });
     }
 
+    function fmtLabel(format) {
+        return format === '2v2' ? '2 на 2' : format === '3p' ? '3 игрока' : '1 на 1';
+    }
+
+    // Выбор нескольких онлайн-друзей под выбранный формат и рассылка приглашений
+    async function showFriendPicker(format, targetScore) {
+        const numPlayers = format === '2v2' ? 4 : format === '3p' ? 3 : 2;
+        const need = numPlayers - 1;
+        removeEl('friend-picker');
+        const o = document.createElement('div');
+        o.id = 'friend-picker'; o.className = 'cab-overlay';
+        o.innerHTML = `<div class="cab-pop">
+            <div class="cab-pop-title">Позвать в игру (${fmtLabel(format)})</div>
+            <div class="cab-pop-sub">Выберите ${need === 1 ? 'игрока' : need + ' игроков'} из тех, кто в сети</div>
+            <div id="fp-list" class="fp-list"><div class="cab-empty">Загрузка…</div></div>
+            <div class="cab-pop-btns">
+                <button class="primary-btn fp-go" disabled>Позвать (0/${need})</button>
+            </div>
+            <button class="cab-pop-cancel">Отмена</button>
+        </div>`;
+        document.body.appendChild(o);
+        o.querySelector('.cab-pop-cancel').addEventListener('click', () => removeEl('friend-picker'));
+        o.addEventListener('click', e => { if (e.target === o) removeEl('friend-picker'); });
+
+        const r = await api('/friends');
+        const listEl = o.querySelector('#fp-list');
+        const goBtn = o.querySelector('.fp-go');
+        const online = (r.ok && r.data.friends ? r.data.friends : []).filter(f => f.online);
+        if (!online.length) {
+            listEl.innerHTML = '<div class="cab-empty">Нет друзей в сети. Добавьте игроков в разделе «Люди» или позовите по коду.</div>';
+            return;
+        }
+        listEl.innerHTML = online.map(f => `
+            <label class="fp-row">
+                <div class="cab-avatar">${avatarInner(f.name, f.avatarUrl)}<span class="cab-dot on"></span></div>
+                <span class="fp-name">${esc(f.name)}</span>
+                <input type="checkbox" class="fp-cb" value="${f.id}" data-name="${esc(f.name)}">
+            </label>`).join('');
+
+        const selected = new Map();
+        function refresh() {
+            goBtn.textContent = `Позвать (${selected.size}/${need})`;
+            goBtn.disabled = selected.size === 0;
+        }
+        listEl.querySelectorAll('.fp-cb').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const id = parseInt(cb.value, 10);
+                if (cb.checked) {
+                    if (selected.size >= need) { cb.checked = false; notify(`Нужно ${need === 1 ? 'одного игрока' : need + ' игроков'}`, 'info'); return; }
+                    selected.set(id, cb.dataset.name);
+                } else selected.delete(id);
+                refresh();
+            });
+        });
+        refresh();
+        goBtn.addEventListener('click', () => {
+            if (!selected.size) return;
+            const names = [...selected.values()];
+            removeEl('friend-picker');
+            gameClient.inviteFriends([...selected.keys()], format, targetScore);
+            // Для 1 на 1 показываем спиннер ожидания; для 3/2на2 хост попадёт в лобби (onInviteSent)
+            if (format === '1v1') showInviteWaiting(names[0] || 'друга');
+        });
+    }
+
+    function invitePlayers(format, targetScore) {
+        if (!getToken()) { promptLogin(); return; }
+        showFriendPicker(format || '1v1', targetScore || 21);
+    }
+
     function showInviteWaiting(name) {
         removeEl('invite-waiting');
         const o = document.createElement('div');
@@ -591,7 +716,7 @@
         o.innerHTML = `<div class="cab-pop invite-pop">
             <div class="ib-emoji">🎴</div>
             <div class="cab-pop-title">${esc(data.fromName)} зовёт в игру</div>
-            <div class="cab-pop-sub">1 на 1 · ${len}</div>
+            <div class="cab-pop-sub">${fmtLabel(data.format)} · ${len}</div>
             <div class="cab-pop-btns">
                 <button class="primary-btn ib-accept">Принять</button>
                 <button class="secondary-btn ib-decline">Отклонить</button>
@@ -608,15 +733,40 @@
     function wireInviteHooks() {
         gameClient.onGameInvite = showIncomingInvite;
         gameClient.onInviteSent = (data) => {
-            // приглашающий — слот 0 в созданной комнате
+            if (data && data.multi) {
+                // 3 игрока / 2 на 2: хост ждёт остальных в лобби (как при создании комнаты)
+                hideInviteWaiting();
+                activateSection('cab-online');
+                if (typeof handleRoomCreated === 'function') handleRoomCreated(data);
+                return;
+            }
+            // 1 на 1 — приглашающий слот 0
             try { gameState.isOnlineGame = true; gameState.roomId = data.roomId; gameState.playerIndex = 0; } catch (e) {}
         };
-        gameClient.onInviteDeclined = (data) => { hideInviteWaiting(); notify((data && data.byName || 'Друг') + ' отклонил приглашение', 'error'); };
-        gameClient.onInviteExpired = () => { hideInviteWaiting(); hideIncomingInvite(); notify('Приглашение истекло', 'info'); };
-        gameClient.onInviteFailed = (data) => { hideInviteWaiting(); notify(data && data.reason === 'offline' ? 'Друг сейчас не в сети' : 'Не удалось пригласить', 'error'); };
-        // при старте игры закрываем оверлеи приглашений (сохраняя обработчик main.js)
+        gameClient.onInviteDeclined = (data) => {
+            // в мульти-лобби спиннера нет — просто сообщаем, хост остаётся ждать остальных
+            if (!(data && data.multi)) hideInviteWaiting();
+            notify((data && data.byName || 'Друг') + ' отклонил приглашение', 'error');
+        };
+        gameClient.onInviteExpired = (data) => {
+            if (data && data.multi) { notify((data.name || 'Игрок') + ' не ответил(а)', 'info'); return; }
+            hideInviteWaiting(); hideIncomingInvite(); notify('Приглашение истекло', 'info');
+        };
+        gameClient.onInviteFailed = (data) => { hideInviteWaiting(); notify(data && data.reason === 'offline' ? 'Никого нет в сети' : 'Не удалось пригласить', 'error'); };
+        // при старте игры / входе в лобби закрываем оверлеи приглашений (сохраняя обработчик main.js)
         const prev = gameClient.onGameStart;
         gameClient.onGameStart = function (gs) { hideInviteWaiting(); hideIncomingInvite(); if (typeof prev === 'function') prev(gs); };
+        // приглашённый принял, но комната ещё не полна → показать раздел онлайн с лобби
+        const prevRJ = gameClient.onRoomJoined;
+        gameClient.onRoomJoined = function (data) {
+            try {
+                const gs = data && data.gameState;
+                const np = gs ? (gs.numPlayers || 2) : 2;
+                const cc = gs ? gs.players.filter(p => p.id && p.connected).length : 0;
+                if (cc < np) activateSection('cab-online');
+            } catch (e) {}
+            if (typeof prevRJ === 'function') prevRJ(data);
+        };
 
         // презенс в реальном времени → тихо обновляем активную вкладку со статусами
         gameClient.onPresence = () => refreshPresenceTab();
@@ -699,6 +849,7 @@
                 else if (s.data.status === 'confirmed') {
                     stopLinkPoll();
                     currentUser = s.data.user; cacheUser(currentUser); applyUser(currentUser);
+                    reconnectSocketWithToken(); // перепривязать сокет к объединённому аккаунту
                     removeEl('manual-link-pop');
                     notify('Аккаунт объединён ✓', 'success');
                 }
@@ -891,8 +1042,22 @@
     }
 
     // ---- инициализация ----
+    let _lastReauth = 0;
+    function handleAuthInvalid() {
+        // Сокет подключился с протухшим токеном (аккаунт слит/удалён) → переавторизуемся.
+        const t = Date.now();
+        if (t - _lastReauth < 4000) return;   // защита от петли
+        _lastReauth = t;
+        if (inTelegram()) { initTelegram(); return; }  // свежий токен + reconnect сокета
+        // браузер/PWA: токен мёртв — на экран входа
+        try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem('panti_user'); } catch (e) {}
+        currentUser = null;
+        if (!inActiveGame()) { authStep('phone'); showAuth(); }
+    }
+
     async function init() {
         await waitForTelegram(2500);
+        try { if (window.gameClient) { gameClient.onAuthInvalid = handleAuthInvalid; if (gameClient._authInvalid) handleAuthInvalid(); } } catch (e) {}
         // обработчики экрана входа
         const startBtn = $('auth-start-btn');
         if (startBtn) startBtn.addEventListener('click', onStartLogin);
@@ -973,6 +1138,7 @@
     window.PantiAuth = {
         getToken,
         getUser: () => currentUser,
+        invitePlayers,
         reportComputerResult: function (win) {
             if (!getToken()) return;
             api('/game/result', { method: 'POST', body: { mode: 'computer', result: win ? 'win' : 'loss' } });

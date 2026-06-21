@@ -478,6 +478,26 @@ function setupMultiplayerListeners() {
 	elements.joinGameBtn.addEventListener('click', joinRoom);
 	elements.copyLinkBtn.addEventListener('click', copyInviteLink);
 
+	// Кнопка «Позвать друзей» — выбрать онлайн-друзей по текущему формату
+	const inviteFriendsBtn = document.getElementById('invite-friends-btn');
+	if (inviteFriendsBtn) {
+		inviteFriendsBtn.addEventListener('click', () => {
+			const format = document.querySelector('input[name="online-format"]:checked');
+			const formatValue = format ? format.value : '1v1';
+			const targetInput = document.querySelector('input[name="online-target-score"]:checked');
+			const targetScore = targetInput ? (parseInt(targetInput.value, 10) || 21) : 21;
+			if (window.PantiAuth && typeof window.PantiAuth.invitePlayers === 'function') {
+				window.PantiAuth.invitePlayers(formatValue, targetScore);
+			}
+		});
+	}
+
+	// Кнопка «Отменить» в лобби — выйти из комнаты и вернуться к настройкам
+	const cancelRoomBtn = document.getElementById('cancel-room-btn');
+	if (cancelRoomBtn) {
+		cancelRoomBtn.addEventListener('click', cancelRoomCreation);
+	}
+
 	// Копирование кода комнаты
 	const copyCodeBtn = document.getElementById('copy-code-btn');
 	if (copyCodeBtn) {
@@ -522,6 +542,32 @@ function createRoom() {
 	const targetScore = targetInput ? (parseInt(targetInput.value, 10) || 21) : 21;
 	gameClient.createRoom(playerName, formatValue, targetScore);
 	showNotification('Создание игры...', 'info');
+}
+
+// Отмена созданной комнаты из лобби: выйти, очистить состояние, вернуть экран настроек
+function cancelRoomCreation() {
+	// Сообщаем серверу, что выходим (в 1v1 комната удалится, иначе освободит слот)
+	gameClient.leaveGame();
+
+	// Сбрасываем онлайн-состояние клиента
+	gameState.isOnlineGame = false;
+	gameState.roomId = null;
+	gameState.playerIndex = null;
+
+	// Прячем лобби, чистим список игроков и динамические кнопки
+	const roomInfo = document.getElementById('room-info');
+	if (roomInfo) roomInfo.classList.add('hidden');
+	const lobbyList = document.getElementById('lobby-player-list');
+	if (lobbyList) lobbyList.remove();
+	const forceStartBtn = document.getElementById('lobby-force-start-btn');
+	if (forceStartBtn) forceStartBtn.remove();
+
+	// Возвращаем вкладки и панель создания
+	const tabs = document.getElementById('online-action-tabs');
+	if (tabs) tabs.classList.remove('hidden');
+	switchOnlineTab('create');
+
+	showNotification('Игра отменена', 'info');
 }
 
 function joinRoom() {
@@ -1034,6 +1080,10 @@ function renderOpponents() {
     if (opponents.length === 1) container.classList.add('opp-count-1');
     else if (opponents.length === 2) container.classList.add('opp-count-2');
     else if (opponents.length >= 3) container.classList.add('opp-count-3');
+
+    // 3–4 игрока (2+ соперника): счёт/правила/выход прячем в меню-иконку справа,
+    // плашки соперников идут от левого угла. В 1 на 1 — всё как было.
+    document.body.classList.toggle('multi-opp', opponents.length >= 2);
 
     // Пересоздаём только если количество изменилось
     const wrappers = container.querySelectorAll('.opponent-wrapper');
@@ -1660,7 +1710,9 @@ function updateLastTakenInfo() {
 
 	// Обновление UI. Подпись в две строки: «Взял:» и имя ниже.
 	elements.lastTakenCards.innerHTML = '';
-	const safeName = String(gameState.lastTakenBy || '')
+	// Только имя (первое слово), без фамилии
+	const firstName = String(gameState.lastTakenBy || '').trim().split(/\s+/)[0] || '';
+	const safeName = firstName
 		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	elements.lastTakenBy.innerHTML = `<span class="lt-label">Взял:</span><span class="lt-name">${safeName}</span>`;
 
@@ -2928,6 +2980,8 @@ function resetGame() {
 // Функция для фактического сброса игры
 function performReset() {
 	hideOpponentWaiting();
+	closeGameMenu();
+	document.body.classList.remove('multi-opp');
 
 	// Уведомить сервер о выходе (если онлайн-игра)
 	if (gameState.isOnlineGame && gameClient) {
@@ -3244,6 +3298,10 @@ function setupEventListeners() {
 	if (elements.restartBtn) {
 		elements.restartBtn.addEventListener('click', resetGame);
 	}
+	const menuIcon = document.getElementById('menu-icon');
+	if (menuIcon) {
+		menuIcon.addEventListener('click', openGameMenu);
+	}
 	if (elements.newGameBtn) {
 		// Заменяем обработчик на новую функцию
 		elements.newGameBtn.addEventListener('click', handleNewGameClick);
@@ -3538,10 +3596,9 @@ function setupEmojiFeature() {
 function pickEmoji(emoji) {
 	const picker = document.getElementById('emoji-picker');
 	if (picker) picker.classList.add('hidden');
-	// Фразы (с буквами) — крупной всплывашкой по центру (на маленькой плашке текст не виден);
-	// эмодзи — крупно на плашке игрока.
+	// Фразы (с буквами) — пузырём над своей плашкой (хвостик вниз); эмодзи — крупно на плашке.
 	if (/[A-Za-zА-Яа-я]/.test(emoji)) {
-		showPhraseToast(selfDisplayName(), emoji, true);
+		showPhraseBubble(document.getElementById('player-self'), emoji, 'down');
 	} else {
 		showEmoteOn(document.getElementById('player-self'), emoji);
 	}
@@ -3556,6 +3613,103 @@ function selfDisplayName() {
 		return (gameState.players[i] || {}).name || 'Вы';
 	}
 	return 'Вы';
+}
+
+// Свёрнутое меню (3–4 игрока): счёт + правила + выход на затемнённом фоне
+function openGameMenu() {
+	let ov = document.getElementById('menu-overlay');
+	if (!ov) {
+		ov = document.createElement('div');
+		ov.id = 'menu-overlay';
+		document.body.appendChild(ov);
+		ov.addEventListener('click', (e) => { if (e.target === ov) closeGameMenu(); });
+	}
+	const card = document.createElement('div');
+	card.className = 'menu-card';
+
+	const title = document.createElement('div');
+	title.className = 'menu-score-title';
+	title.textContent = 'Общий счёт';
+	card.appendChild(title);
+
+	if (gameState.totalScores && gameState.players) {
+		const myIndex = gameState.isOnlineGame ? (gameState.playerIndex || 0) : 0;
+		const addRow = (label, pts) => {
+			const row = document.createElement('div');
+			row.className = 'menu-score-row';
+			const n = document.createElement('span'); n.className = 'ms-name'; n.textContent = label;
+			const p = document.createElement('span'); p.className = 'ms-pts'; p.textContent = pts;
+			row.appendChild(n); row.appendChild(p); card.appendChild(row);
+		};
+		addRow('Вы', gameState.totalScores[myIndex] || 0);
+		gameState.players.forEach((pl, i) => {
+			if (i !== myIndex) addRow(pl.name || `Игрок ${i + 1}`, gameState.totalScores[i] || 0);
+		});
+	}
+
+	const actions = document.createElement('div');
+	actions.className = 'menu-actions';
+	const rulesBtn = document.createElement('button');
+	rulesBtn.className = 'menu-rules'; rulesBtn.textContent = 'Правила';
+	rulesBtn.addEventListener('click', () => { closeGameMenu(); showRules(); });
+	const exitBtn = document.createElement('button');
+	exitBtn.className = 'menu-exit'; exitBtn.textContent = 'Выйти';
+	exitBtn.addEventListener('click', () => { closeGameMenu(); resetGame(); });
+	actions.appendChild(rulesBtn); actions.appendChild(exitBtn);
+	card.appendChild(actions);
+
+	ov.innerHTML = '';
+	ov.appendChild(card);
+	void ov.offsetWidth;
+	ov.classList.add('show');
+}
+function closeGameMenu() {
+	const ov = document.getElementById('menu-overlay');
+	if (ov) ov.classList.remove('show');
+}
+
+// Фраза-пузырь у плашки написавшего. dir: 'up' (пузырь ПОД плашкой соперника вверху,
+// хвостик вверх к плашке) или 'down' (пузырь НАД своей плашкой внизу, хвостик вниз).
+// Позиционируется fixed по координатам плашки — чтобы не обрезался overflow контейнера.
+function showPhraseBubble(targetEl, text, dir) {
+	if (!targetEl) return;
+	const r = targetEl.getBoundingClientRect();
+	let b = document.getElementById('phrase-bubble');
+	if (!b) {
+		b = document.createElement('div');
+		b.id = 'phrase-bubble';
+		b.className = 'phrase-bubble';
+		document.body.appendChild(b);
+	}
+	b.classList.remove('up', 'down');
+	b.classList.add(dir === 'down' ? 'down' : 'up');
+	b.textContent = text;
+	// вертикаль
+	if (dir === 'down') {          // над плашкой (своя внизу)
+		b.style.top = 'auto';
+		b.style.bottom = Math.round(window.innerHeight - r.top + 9) + 'px';
+	} else {                        // под плашкой (соперник вверху)
+		b.style.bottom = 'auto';
+		b.style.top = Math.round(r.bottom + 9) + 'px';
+	}
+	// горизонталь: центрируем на плашке, но кламп в пределах экрана, чтобы не обрезалось у края.
+	// Хвостик при этом смещаем так, чтобы он по-прежнему указывал на плашку.
+	const margin = 8;
+	const plateCenter = r.left + r.width / 2;
+	b.style.left = '0px';
+	void b.offsetWidth;
+	const w = b.offsetWidth;
+	let left = plateCenter - w / 2;
+	left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+	b.style.left = Math.round(left) + 'px';
+	let tailX = plateCenter - (left + w / 2);          // смещение хвостика от центра пузыря
+	tailX = Math.max(-(w / 2 - 12), Math.min(tailX, w / 2 - 12));
+	b.style.setProperty('--tail-x', Math.round(tailX) + 'px');
+	b.classList.remove('show');
+	void b.offsetWidth;
+	b.classList.add('show');
+	clearTimeout(b._hideT);
+	b._hideT = setTimeout(() => b.classList.remove('show'), 4000);
 }
 
 // Всплывающее сообщение-фраза по центру сверху (видно всегда, в отличие от пузыря на плашке)
@@ -3597,14 +3751,13 @@ function showEmoteOn(targetEl, emoji) {
 	ov._hideT = setTimeout(() => ov.classList.remove('show'), 4000);
 }
 
-// Эмоция пришла от другого игрока — фраза всплывашкой, эмодзи на его плашке
+// Эмоция пришла от другого игрока — фраза пузырём под его плашкой (хвостик вверх), эмодзи на плашке
 function handlePlayerEmoji(data) {
 	if (!data || data.playerIndex == null || !data.emoji) return;
+	const sq = document.querySelector('#opp-sq-' + data.playerIndex + ' .opponent-square');
 	if (/[A-Za-zА-Яа-я]/.test(data.emoji)) {
-		const name = (gameState.players[data.playerIndex] || {}).name || 'Соперник';
-		showPhraseToast(name, data.emoji, false);
+		showPhraseBubble(sq, data.emoji, 'up');
 	} else {
-		const sq = document.querySelector('#opp-sq-' + data.playerIndex + ' .opponent-square');
 		showEmoteOn(sq, data.emoji);
 	}
 }

@@ -450,6 +450,27 @@ button:disabled {
 }
 
 /* Room info after creation */
+.lobby-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--primary-color);
+    border: none;
+    border-radius: 18px;
+    padding: 7px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 10px;
+    transition: background 0.15s;
+}
+
+.lobby-back-btn:hover,
+.lobby-back-btn:active {
+    background: rgba(0, 0, 0, 0.12);
+}
+
 .room-created-title {
     font-weight: 700;
     font-size: 1.05rem;
@@ -2664,4 +2685,160 @@ body:has(#game-board:not(.hidden)) header {
         background-color: rgba(0, 0, 0, 0.28);
         color: rgba(255, 255, 255, 0.7);
     }
+}
+
+/* ===== Редизайн верха стола + меню + пузырь фраз + низ — 2026-06-22 ===== */
+
+/* (1) Плашки соперников поднимаем на уровень иконок (верхняя полоса).
+   Меньше верхнего паддинга — для НЕ-Telegram (PWA/браузер). В Telegram
+   правится в cabinet.css (.tg-app .game-layout). */
+@media screen and (max-width: 768px) {
+    .game-layout { padding-top: calc(env(safe-area-inset-top) + 8px); }
+    .opponents-container { padding-top: 0; }
+}
+.opponents-container { padding-top: 0; }
+
+/* (1a) 1 на 1 — одна плашка по центру верхней полосы (между счётом слева и иконками справа) */
+.opponents-container.opp-count-1 { justify-content: center; padding-left: 0; padding-right: 0; }
+
+/* (2) 3–4 игрока — плашки от ЛЕВОГО угла вправо; справа резервируем место под колоду+меню */
+.opponents-container.opp-count-2,
+.opponents-container.opp-count-3 {
+    justify-content: flex-start;
+    padding-left: 6px;
+    padding-right: 88px;   /* колода (34) + меню (34) + зазоры */
+    gap: 8px;
+}
+
+/* (3) Иконка-меню (свёрнутые счёт/правила/выход) — полупрозрачная, видно что разворачивается.
+   По умолчанию скрыта; показывается только при 3–4 игроках (body.multi-opp). */
+#menu-icon {
+    display: none;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    padding: 0;
+    border: none;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.32);
+    color: #fff;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+}
+#menu-icon:hover { background: rgba(255, 255, 255, 0.45); }
+
+/* при 3–4 игроках прячем счёт/правила/выход в меню, оставляем колоду + меню */
+body.multi-opp #menu-icon { display: flex; }
+body.multi-opp .game-score-display,
+body.multi-opp #rules-btn,
+body.multi-opp #restart-btn { display: none; }
+
+/* раскрытое меню: затемнённый фон + карточка со счётом и кнопками */
+#menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100070;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: calc(max(var(--tg-top, 0px), env(safe-area-inset-top)) + 50px) 12px 0;
+    background: rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+}
+#menu-overlay.show { opacity: 1; pointer-events: auto; }
+.menu-card {
+    width: min(78vw, 280px);
+    background: #fff;
+    color: #1d3b34;
+    border-radius: 16px;
+    padding: 14px 16px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+    transform: translateY(-8px);
+    transition: transform 0.2s cubic-bezier(.2,.9,.3,1.3);
+}
+#menu-overlay.show .menu-card { transform: translateY(0); }
+.menu-card .menu-score-title { font-weight: 700; font-size: 0.82rem; color: #7a8a85; margin-bottom: 8px; }
+.menu-card .menu-score-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 0.98rem; }
+.menu-card .menu-score-row .ms-name { color: #2d4a43; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-card .menu-score-row .ms-pts { font-weight: 800; color: #1d3b34; }
+.menu-card .menu-actions { display: flex; gap: 10px; margin-top: 14px; }
+.menu-card .menu-actions button {
+    flex: 1;
+    padding: 11px 8px;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+.menu-card .menu-rules { background: #eaf3ef; color: #1d4b40; }
+.menu-card .menu-exit { background: #2c3e50; color: #fff; }
+
+/* (4) Кнопки «Сбросить/Взять» — приподнять от нижней шторки айфона.
+   В Mini App env(safe-area-inset-bottom)≈0, поэтому базовый отступ фиксированный. */
+@media screen and (max-width: 768px) {
+    .game-controls {
+        padding: 4px 10px calc(env(safe-area-inset-bottom) + 22px);
+        margin-bottom: 0;
+    }
+}
+
+/* (5) Фраза-пузырь у плашки написавшего: полупрозрачный фон, мелкий шрифт, хвостик к плашке.
+   position:fixed + left/top/bottom задаются из JS по координатам плашки. */
+.phrase-bubble {
+    position: fixed;
+    z-index: 100065;
+    width: max-content;
+    max-width: 70vw;
+    padding: 6px 10px;
+    border-radius: 13px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: normal;
+    text-align: center;
+    color: #fff;
+    background: rgba(20, 40, 35, 0.72);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+.phrase-bubble.show { opacity: 1; }
+/* хвостик смещается к плашке через --tail-x (пузырь мог сдвинуться от центра при клампе у края) */
+.phrase-bubble.up::after {
+    content: '';
+    position: absolute; bottom: 100%; left: calc(50% + var(--tail-x, 0px));
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-bottom-color: rgba(20, 40, 35, 0.72);
+}
+.phrase-bubble.down::after {
+    content: '';
+    position: absolute; top: 100%; left: calc(50% + var(--tail-x, 0px));
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: rgba(20, 40, 35, 0.72);
+}
+
+/* ===== Догонка по скрину 22.06: крупнее плашки соперников (3–4 игрока) ===== */
+@media screen and (max-width: 768px) {
+    /* 3 игрока (2 соперника) */
+    .opp-count-2 .opponent-square { width: 80px; height: 70px; }
+    .opp-count-2 .opp-fan-card { width: 24px; height: 34px; }
+    /* 2 на 2 (3 соперника) — чуть крупнее, но 3 шт. влезают и на 12 mini */
+    .opp-count-3 .opponent-square { width: 70px; height: 62px; }
+    .opp-count-3 .opp-fan-card { width: 20px; height: 28px; }
+    /* имя помещается на одну строку */
+    .opp-count-3 .opponent-sq-name { font-size: 0.62rem; }
 }

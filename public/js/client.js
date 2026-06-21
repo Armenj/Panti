@@ -38,6 +38,13 @@ class GameClient {
             this._everConnected = true;
         });
 
+        // Токен сокета протух (аккаунт слит/удалён) — даём приложению переавторизоваться.
+        // Флаг на случай, если событие пришло раньше, чем auth.js назначил обработчик.
+        this.socket.on('auth-invalid', () => {
+            this._authInvalid = true;
+            if (typeof this.onAuthInvalid === 'function') this.onAuthInvalid();
+        });
+
         // Создание комнаты
         this.socket.on('room-created', (data) => {
             this.updateLocalData(data);
@@ -180,6 +187,15 @@ class GameClient {
     // Пригласить друга (онлайн) — сервер создаёт комнату и шлёт другу уведомление
     inviteFriend(friendId, targetScore) {
         this.socket.emit('invite-friend', { friendId, targetScore: targetScore || 21 });
+    }
+
+    // Пригласить нескольких друзей сразу (3 игрока / 2 на 2)
+    inviteFriends(friendIds, format, targetScore) {
+        this.socket.emit('invite-friends', {
+            friendIds: friendIds || [],
+            format: format || '1v1',
+            targetScore: targetScore || 21
+        });
     }
 
     // Ответ на приглашение (принять/отклонить)

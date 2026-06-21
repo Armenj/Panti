@@ -6,7 +6,7 @@
      меняем имя только если реально меняются сами файлы картинок.
    HTML/JS/CSS — stale-while-revalidate (мгновенно из кэша, обновление в фоне).
    Никогда не трогаем /socket.io/ и /api/. */
-const CODE_VERSION = 'v62';
+const CODE_VERSION = 'v68';
 const CODE_CACHE = 'odin-code-' + CODE_VERSION;
 const IMG_CACHE = 'odin-img-v2';     // ← менять только при смене файлов картинок
 const SHELL = [
