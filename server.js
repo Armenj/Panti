@@ -48,7 +48,7 @@ function sendTelegramInvite(telegramId, inviteId, text) {
                 { text: '❌ Пока не могу', callback_data: `decline:${inviteId}` }
             ]]
         }
-    }).then(r => { if (!r.ok) console.error('sendTelegramInvite failed:', r.error || r.description); });
+    }).then(r => { r.ok ? console.log(`[invite] DM отправлена telegramId=${telegramId}`) : console.error('[invite] DM НЕ отправлена:', JSON.stringify(r)); });
 }
 
 const app = express();
@@ -692,10 +692,12 @@ io.on('connection', (socket) => {
         const numPlayers = format === '2v2' ? 4 : format === '3p' ? 3 : 2;
         const multi = numPlayers > 2;
 
+        console.log(`[invite] запрос от userId=${socket.userId}, format=${format}, friendIds=${JSON.stringify(friendIds)}`);
+
         // нормализуем список: числа, не я, уникальные, не больше чем нужно слотов
         let ids = (Array.isArray(friendIds) ? friendIds : [friendIds]).map(x => parseInt(x, 10));
         ids = [...new Set(ids)].filter(id => id && id !== socket.userId).slice(0, numPlayers - 1);
-        if (!ids.length) { socket.emit('invite-failed', { reason: 'bad' }); return; }
+        if (!ids.length) { console.log('[invite] отбой: bad (пустой список после нормализации)'); socket.emit('invite-failed', { reason: 'bad' }); return; }
 
         // онлайн — зовём через сокет; офлайн, но с привязанным Telegram — зовём DM-сообщением
         // с кнопками «Открыть игру»/«Пока не могу» (вместо мгновенного и молчаливого фейла).
@@ -704,9 +706,11 @@ io.on('connection', (socket) => {
             if (sockets.length) return { id, sockets, viaTelegram: false };
             const u = auth.userById(id);
             if (u && u.telegram_id) return { id, sockets: [], viaTelegram: true, telegramId: u.telegram_id };
+            console.log(`[invite] userId=${id} недостижим: офлайн и ${u ? 'без telegram_id' : 'не найден в БД'}`);
             return null; // офлайн и без Telegram — реально недостижим
         }).filter(Boolean);
-        if (!targets.length) { socket.emit('invite-failed', { reason: 'offline' }); return; }
+        console.log(`[invite] targets: ${JSON.stringify(targets.map(t => ({ id: t.id, viaTelegram: t.viaTelegram, sockets: t.sockets.length })))}`);
+        if (!targets.length) { console.log('[invite] отбой: offline (никто не достижим)'); socket.emit('invite-failed', { reason: 'offline' }); return; }
 
         // комната, хост — приглашающий (слот 0)
         const roomId = generateUniqueRoomId();
@@ -767,14 +771,14 @@ io.on('connection', (socket) => {
 
     // 1 на 1 (одиночное приглашение — кнопка «Позвать» у друга)
     socket.on('invite-friend', (data) => {
-        if (!socket.userId) { socket.emit('invite-failed', { reason: 'auth' }); return; }
+        if (!socket.userId) { console.log('[invite] invite-friend без userId (не авторизован)'); socket.emit('invite-failed', { reason: 'auth' }); return; }
         const targetScore = (data && parseInt(data.targetScore, 10) === 11) ? 11 : 21;
         startInvites('1v1', targetScore, data && data.friendId);
     });
 
     // Несколько друзей сразу (3 игрока / 2 на 2 / либо 1 на 1)
     socket.on('invite-friends', (data) => {
-        if (!socket.userId) { socket.emit('invite-failed', { reason: 'auth' }); return; }
+        if (!socket.userId) { console.log('[invite] invite-friends без userId (не авторизован)'); socket.emit('invite-failed', { reason: 'auth' }); return; }
         const format = (data && data.format === '2v2') ? '2v2' : (data && data.format === '3p') ? '3p' : '1v1';
         const targetScore = (data && parseInt(data.targetScore, 10) === 11) ? 11 : 21;
         startInvites(format, targetScore, data && data.friendIds);
