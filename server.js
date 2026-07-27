@@ -18,7 +18,7 @@ const invites = new Map();
 const TELEGRAM_API_BASE = process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org';
 const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'panty_game_bot';
 
-// Общий helper для вызовов Telegram Bot API (sendMessage/answerCallbackQuery/editMessageReplyMarkup/setWebhook).
+// Общий helper для вызовов Telegram Bot API (sendMessage/answerCallbackQuery/editMessageReplyMarkup/getUpdates).
 function telegramApi(method, payload) {
     return new Promise((resolve) => {
         const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -35,9 +35,8 @@ function telegramApi(method, payload) {
 // DM другу-оффлайну о приглашении в игру: кнопка «Открыть игру» (обычный Mini App deep-link;
 // специальной логики авто-принятия не нужно — как только человек залогинится, сокет-хендлер
 // connection сам найдёт висящий инвайт по toUserId и пришлёт game-invite, дальше обычный
-// попап Принять/Отклонить) и «Пока не могу» (callback_query → decline на сервере, см.
-// /api/telegram/webhook), чтобы позвавший не ждал молча — увидит invite-declined и сможет
-// позвать кого-то ещё.
+// попап Принять/Отклонить) и «Пока не могу» (callback_query → decline, см. pollTelegramUpdates
+// ниже), чтобы позвавший не ждал молча — увидит invite-declined и сможет позвать кого-то ещё.
 function sendTelegramInvite(telegramId, inviteId, text) {
     telegramApi('sendMessage', {
         chat_id: telegramId,
@@ -126,17 +125,10 @@ app.post('/api/admin/broadcast', requireAdminMw, async (req, res) => {
     res.json({ ok: true, total: ids.length, sent, failed });
 });
 
-// Приём апдейтов от Telegram (сейчас нужен только для кнопки «Пока не могу»
-// на офлайн-инвайте — см. startInvites/sendTelegramInvite). Секрет в заголовке
-// защищает от подделки запроса кем угодно из интернета (URL публичный).
-app.post('/api/telegram/webhook', (req, res) => {
-    const secret = req.headers['x-telegram-bot-api-secret-token'];
-    if (!process.env.TELEGRAM_WEBHOOK_SECRET || secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
-        return res.sendStatus(401);
-    }
-    res.sendStatus(200); // отвечаем сразу — Telegram не должен ждать сети до бота
-
-    const cq = req.body && req.body.callback_query;
+// Обработка кнопки «Пока не могу» на офлайн-инвайте (callback_query из pollTelegramUpdates
+// ниже — webhook пробовали, но Telegram не смог достучаться ДО этого RF-сервера, "Connection
+// timed out", тот же класс блокировки что и в обратную сторону, см. TELEGRAM_API_BASE).
+function handleCallbackQuery(cq) {
     if (!cq || typeof cq.data !== 'string' || !cq.data.startsWith('decline:')) return;
 
     const inviteId = cq.data.slice('decline:'.length);
@@ -160,7 +152,25 @@ app.post('/api/telegram/webhook', (req, res) => {
             reply_markup: { inline_keyboard: [[{ text: '❌ Отклонено', callback_data: 'noop' }]] }
         });
     }
-});
+}
+
+// Long-polling getUpdates вместо webhook — тот же паттерн, что уже работает у остальных
+// ботов (povod/aarpi), а не push от Telegram к нам (см. комментарий в handleCallbackQuery).
+let tgPollOffset = 0;
+async function pollTelegramUpdates() {
+    if (!process.env.TELEGRAM_BOT_TOKEN) return;
+    const r = await telegramApi('getUpdates', { offset: tgPollOffset, timeout: 30, allowed_updates: ['callback_query'] });
+    if (r.ok && Array.isArray(r.result)) {
+        for (const upd of r.result) {
+            tgPollOffset = upd.update_id + 1;
+            if (upd.callback_query) handleCallbackQuery(upd.callback_query);
+        }
+    } else if (!r.ok) {
+        console.error('[invite] getUpdates failed:', JSON.stringify(r));
+        await new Promise(res => setTimeout(res, 5000)); // не долбить API при ошибке
+    }
+    setImmediate(pollTelegramUpdates);
+}
 
 // страница админки
 app.get('/admin', (req, res) => {
@@ -1376,14 +1386,13 @@ function cleanupOldRooms() {
                     }
                 }
 
-                // Регистрируем вебхук Telegram (кнопка «Пока не могу» на офлайн-инвайте) — idempotent,
-                // безопасно звать при каждом старте сервера.
-                if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET && process.env.PUBLIC_URL) {
-                    telegramApi('setWebhook', {
-                        url: `${process.env.PUBLIC_URL}/api/telegram/webhook`,
-                        secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
-                        allowed_updates: ['callback_query']
-                    }).then(r => console.log('Telegram setWebhook:', r.ok ? 'ok' : r));
+                // getUpdates и webhook несовместимы одновременно — сначала снимаем вебхук
+                // (оставшийся от предыдущей попытки), потом запускаем polling.
+                if (process.env.TELEGRAM_BOT_TOKEN) {
+                    telegramApi('deleteWebhook', {}).then(() => {
+                        console.log('[invite] Telegram polling запущен');
+                        pollTelegramUpdates();
+                    });
                 }
 
                 // Запуск сервера
