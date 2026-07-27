@@ -504,10 +504,11 @@
             });
         });
         box.querySelectorAll('[data-invite]').forEach(b => {
-            b.addEventListener('click', () => {
-                if (b.dataset.online !== '1') { notify('Друг сейчас не в сети', 'error'); return; }
-                showInviteChooser(parseInt(b.dataset.invite, 10), b.dataset.name);
-            });
+            // Раньше офлайн-друга нельзя было даже позвать — клиент рубил на корню с тем же
+            // "не в сети", про которое и был исходный баг-репорт. Теперь сервер сам умеет слать
+            // Telegram-DM офлайн-другу (см. startInvites/sendTelegramInvite в server.js) — значит
+            // клиент не должен блокировать попытку раньше него.
+            b.addEventListener('click', () => showInviteChooser(parseInt(b.dataset.invite, 10), b.dataset.name));
         });
     }
 
