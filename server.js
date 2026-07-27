@@ -13,6 +13,44 @@ const { mountAuth, getUserByToken, recordOnlineMatch } = auth;
 // Активные приглашения в игру: inviteId → { roomId, fromUserId, toUserId, timer }
 const invites = new Map();
 
+// РФ-сервер не достучивается до api.telegram.org напрямую (DPI-блок) —
+// TELEGRAM_API_BASE_URL указывает на Cloudflare Worker-relay, если задан.
+const TELEGRAM_API_BASE = process.env.TELEGRAM_API_BASE_URL || 'https://api.telegram.org';
+const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'panty_game_bot';
+
+// Общий helper для вызовов Telegram Bot API (sendMessage/answerCallbackQuery/editMessageReplyMarkup/setWebhook).
+function telegramApi(method, payload) {
+    return new Promise((resolve) => {
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        if (!token) return resolve({ ok: false, error: 'no token' });
+        const body = JSON.stringify(payload || {});
+        const r = https.request(`${TELEGRAM_API_BASE}/bot${token}/${method}`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+            (resp) => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { resolve({ ok: false, error: 'bad response' }); } }); });
+        r.on('error', (e) => resolve({ ok: false, error: e.message }));
+        r.write(body); r.end();
+    });
+}
+
+// DM другу-оффлайну о приглашении в игру: кнопка «Открыть игру» (обычный Mini App deep-link;
+// специальной логики авто-принятия не нужно — как только человек залогинится, сокет-хендлер
+// connection сам найдёт висящий инвайт по toUserId и пришлёт game-invite, дальше обычный
+// попап Принять/Отклонить) и «Пока не могу» (callback_query → decline на сервере, см.
+// /api/telegram/webhook), чтобы позвавший не ждал молча — увидит invite-declined и сможет
+// позвать кого-то ещё.
+function sendTelegramInvite(telegramId, inviteId, text) {
+    telegramApi('sendMessage', {
+        chat_id: telegramId,
+        text,
+        reply_markup: {
+            inline_keyboard: [[
+                { text: '🎴 Открыть игру', url: `https://t.me/${TELEGRAM_BOT_USERNAME}?startapp=invite` },
+                { text: '❌ Пока не могу', callback_data: `decline:${inviteId}` }
+            ]]
+        }
+    }).then(r => { if (!r.ok) console.error('sendTelegramInvite failed:', r.error || r.description); });
+}
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
@@ -81,19 +119,47 @@ app.post('/api/admin/broadcast', requireAdminMw, async (req, res) => {
     const ids = auth.allTelegramIds();
     let sent = 0, failed = 0;
     for (const chatId of ids) {
-        try {
-            await new Promise((resolve) => {
-                const body = JSON.stringify({ chat_id: chatId, text });
-                const r = https.request(`https://api.telegram.org/bot${token}/sendMessage`,
-                    { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
-                    (resp) => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { JSON.parse(d).ok ? sent++ : failed++; } catch (e) { failed++; } resolve(); }); });
-                r.on('error', () => { failed++; resolve(); });
-                r.write(body); r.end();
-            });
-            await new Promise(r => setTimeout(r, 40)); // ~25 msg/sec, под лимит Telegram
-        } catch (e) { failed++; }
+        const r = await telegramApi('sendMessage', { chat_id: chatId, text });
+        r.ok ? sent++ : failed++;
+        await new Promise(r => setTimeout(r, 40)); // ~25 msg/sec, под лимит Telegram
     }
     res.json({ ok: true, total: ids.length, sent, failed });
+});
+
+// Приём апдейтов от Telegram (сейчас нужен только для кнопки «Пока не могу»
+// на офлайн-инвайте — см. startInvites/sendTelegramInvite). Секрет в заголовке
+// защищает от подделки запроса кем угодно из интернета (URL публичный).
+app.post('/api/telegram/webhook', (req, res) => {
+    const secret = req.headers['x-telegram-bot-api-secret-token'];
+    if (!process.env.TELEGRAM_WEBHOOK_SECRET || secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
+        return res.sendStatus(401);
+    }
+    res.sendStatus(200); // отвечаем сразу — Telegram не должен ждать сети до бота
+
+    const cq = req.body && req.body.callback_query;
+    if (!cq || typeof cq.data !== 'string' || !cq.data.startsWith('decline:')) return;
+
+    const inviteId = cq.data.slice('decline:'.length);
+    const inv = invites.get(inviteId);
+    if (inv) {
+        clearTimeout(inv.timer);
+        invites.delete(inviteId);
+        auth.getUserSockets(inv.fromUserId).forEach(sid => io.to(sid).emit('invite-declined', {
+            byName: inv.toName || 'Игрок', multi: !!inv.multi
+        }));
+        if (!inv.multi && rooms.has(inv.roomId)) { rooms.delete(inv.roomId); deleteRoomFile(inv.roomId); }
+    }
+
+    telegramApi('answerCallbackQuery', {
+        callback_query_id: cq.id,
+        text: inv ? 'Хорошо, дал знать другу' : 'Приглашение уже неактуально'
+    });
+    if (cq.message) {
+        telegramApi('editMessageReplyMarkup', {
+            chat_id: cq.message.chat.id, message_id: cq.message.message_id,
+            reply_markup: { inline_keyboard: [[{ text: '❌ Отклонено', callback_data: 'noop' }]] }
+        });
+    }
 });
 
 // страница админки
@@ -252,6 +318,17 @@ io.on('connection', (socket) => {
             const becameOnline = auth.setUserOnline(u.id, socket.id);
             // Презенс в реальном времени: оповещаем всех, что игрок появился в сети
             if (becameOnline) io.emit('presence', { userId: u.id, online: true });
+
+            // Догоняем приглашения, отправленные пока юзер был офлайн (DM в Telegram) —
+            // если он открыл приложение сам, а не по кнопке из сообщения, попап всё равно должен появиться.
+            for (const [inviteId, inv] of invites) {
+                if (inv.toUserId === u.id) {
+                    socket.emit('game-invite', {
+                        inviteId, roomId: inv.roomId, fromName: inv.fromName || 'Игрок',
+                        format: inv.format, targetScore: inv.targetScore, multi: inv.multi
+                    });
+                }
+            }
         } else if (token) {
             // Токен передан, но недействителен (аккаунт слит/удалён, сессия истекла).
             // Сокет остаётся анонимным → презенс не регистрируется. Просим клиент
@@ -620,8 +697,15 @@ io.on('connection', (socket) => {
         ids = [...new Set(ids)].filter(id => id && id !== socket.userId).slice(0, numPlayers - 1);
         if (!ids.length) { socket.emit('invite-failed', { reason: 'bad' }); return; }
 
-        // только онлайн
-        const targets = ids.map(id => ({ id, sockets: auth.getUserSockets(id) })).filter(t => t.sockets.length);
+        // онлайн — зовём через сокет; офлайн, но с привязанным Telegram — зовём DM-сообщением
+        // с кнопками «Открыть игру»/«Пока не могу» (вместо мгновенного и молчаливого фейла).
+        const targets = ids.map(id => {
+            const sockets = auth.getUserSockets(id);
+            if (sockets.length) return { id, sockets, viaTelegram: false };
+            const u = auth.userById(id);
+            if (u && u.telegram_id) return { id, sockets: [], viaTelegram: true, telegramId: u.telegram_id };
+            return null; // офлайн и без Telegram — реально недостижим
+        }).filter(Boolean);
         if (!targets.length) { socket.emit('invite-failed', { reason: 'offline' }); return; }
 
         // комната, хост — приглашающий (слот 0)
@@ -642,21 +726,36 @@ io.on('connection', (socket) => {
             const u = auth.userById(t.id);
             const toName = u ? ([u.first_name, u.last_name].filter(Boolean).join(' ').trim() || 'Игрок') : 'Игрок';
             const inviteId = uuidv4();
+            const fromName = socket.userName || 'Игрок';
+            // Живому в сокете игроку не до размышлений — 60с. Офлайн-DM ждёт, пока человек
+            // увидит пуш в Telegram и откроет приложение — даём 15 минут.
+            const ttlMs = t.viaTelegram ? 15 * 60 * 1000 : 60 * 1000;
             const timer = setTimeout(() => {
                 if (!invites.has(inviteId)) return;
                 invites.delete(inviteId);
                 t.sockets.forEach(sid => io.to(sid).emit('invite-expired', { inviteId }));
-                io.to(socket.id).emit('invite-expired', { multi, name: toName });
+                // Офлайн-DM живёт до 15 минут — за это время у хоста мог смениться socket.id
+                // (переподключение), поэтому бьём по актуальным сокетам его аккаунта, а не
+                // по сокету из момента создания инвайта.
+                auth.getUserSockets(socket.userId).forEach(sid => io.to(sid).emit('invite-expired', { multi, name: toName }));
                 // 1 на 1: никто не принял — убираем пустую комнату
                 if (!multi && rooms.has(roomId)) {
                     const gs = rooms.get(roomId);
                     if (!gs.players[1].connected) { rooms.delete(roomId); deleteRoomFile(roomId); }
                 }
-            }, 60 * 1000);
-            invites.set(inviteId, { roomId, fromUserId: socket.userId, toUserId: t.id, timer, multi, toName });
-            t.sockets.forEach(sid => io.to(sid).emit('game-invite', {
-                inviteId, roomId, fromName: socket.userName || 'Игрок', format, targetScore, multi
-            }));
+            }, ttlMs);
+            invites.set(inviteId, { roomId, fromUserId: socket.userId, toUserId: t.id, timer, multi, toName, fromName, format, targetScore });
+
+            if (!t.viaTelegram) {
+                t.sockets.forEach(sid => io.to(sid).emit('game-invite', {
+                    inviteId, roomId, fromName, format, targetScore, multi
+                }));
+            } else {
+                const lenLabel = targetScore === 11 ? 'до 11 очков' : 'до 21 очка';
+                const fmtLabel = format === '2v2' ? '2 на 2' : format === '3p' ? '3 игрока' : '1 на 1';
+                sendTelegramInvite(t.telegramId, inviteId,
+                    `🎴 ${fromName} зовёт вас в игру «Панти» (${fmtLabel}, ${lenLabel})!`);
+            }
         });
 
         socket.emit('invite-sent', {
@@ -1271,6 +1370,16 @@ function cleanupOldRooms() {
                     } catch (error) {
                         console.error("Ошибка при очистке старых комнат:", error);
                     }
+                }
+
+                // Регистрируем вебхук Telegram (кнопка «Пока не могу» на офлайн-инвайте) — idempotent,
+                // безопасно звать при каждом старте сервера.
+                if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET && process.env.PUBLIC_URL) {
+                    telegramApi('setWebhook', {
+                        url: `${process.env.PUBLIC_URL}/api/telegram/webhook`,
+                        secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
+                        allowed_updates: ['callback_query']
+                    }).then(r => console.log('Telegram setWebhook:', r.ok ? 'ok' : r));
                 }
 
                 // Запуск сервера
