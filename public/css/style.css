@@ -1539,7 +1539,9 @@ button:disabled {
     color: var(--white);
     border-radius: 8px;
     box-shadow: var(--shadow-md);
-    z-index: 1000;
+    /* Выше .cab-overlay (100050 в cabinet.css) — иначе тост рисуется ПОД тёмной
+       подложкой открытой модалки и выглядит затемнённым/нечитаемым. */
+    z-index: 100060;
     opacity: 1;
     transform: translateY(0);
     transition: opacity 0.3s, transform 0.3s;

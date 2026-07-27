@@ -70,6 +70,7 @@
     async function initTelegram() {
         const tg = tgApp();
         setupTgChrome();
+        try { sessionStorage.removeItem('panti_skip_tg_autologin'); } catch (e) {}
 
         const r = await api('/auth/telegram', { method: 'POST', body: { initData: tg.initData } });
         if (!r.ok || !r.data.token) {
@@ -410,6 +411,12 @@
         clearToken();
         clearUserCache();
         clearGuestFlag();
+        // Внутри Telegram init() при каждой загрузке молча логинит через initData —
+        // без этого флага «Выйти» выглядело бы так, будто кнопка ничего не делает
+        // (аккаунт тут же возвращался бы через авто-вход). Флаг живёт одну загрузку:
+        // showAuth()/initTelegram() снимают его сами, как только реально показали
+        // экран входа по телефону или человек снова вошёл через Telegram.
+        try { sessionStorage.setItem('panti_skip_tg_autologin', '1'); } catch (e) {}
         location.reload();
     }
 
@@ -1085,15 +1092,25 @@
         if (cancelBtn) cancelBtn.addEventListener('click', () => { stopPolling(); backToPhone(); });
         const guestBtn = $('auth-guest-btn');
         if (guestBtn) guestBtn.addEventListener('click', () => enterGuest());
+        const tgReturnBtn = $('auth-tg-return-btn');
+        if (tgReturnBtn) tgReturnBtn.addEventListener('click', () => { tgReturnBtn.disabled = true; initTelegram(); });
 
         // Если main.js уже восстановил игру — не перекрываем её сплэшем
         const gameActive = inActiveGame();
         if (gameActive) hideSplash();
 
-        // Внутри Telegram — оформление (отступы под хедер) всегда, вход — если не идёт игра
+        // Внутри Telegram — оформление (отступы под хедер) всегда, вход — если не идёт игра.
+        // Флаг panti_skip_tg_autologin (ставится в onLogout) держится, пока человек явно не
+        // войдёт обратно через Telegram (кнопка на экране входа, см. showAuth) — иначе, раз
+        // Telegram initData валиден всегда, «Выйти» тут же перелогинивало бы тем же
+        // аккаунтом на следующей же перезагрузке (а она случается и во время самого входа
+        // по номеру — см. startPolling), и войти под другим номером было бы невозможно.
+        let skipTgAutoLogin = false;
+        try { skipTgAutoLogin = sessionStorage.getItem('panti_skip_tg_autologin') === '1'; } catch (e) {}
         if (inTelegram()) {
             setupTgChrome();
-            if (!gameActive) { await initTelegram(); return; }
+            if (!gameActive && !skipTgAutoLogin) { await initTelegram(); return; }
+            if (skipTgAutoLogin && tgReturnBtn) tgReturnBtn.classList.remove('hidden');
         }
 
         // нет токена → либо гость (если выбирал в этой сессии), либо экран входа

@@ -75,6 +75,10 @@
                     <div id="tg-login-btn-wrap"></div>
                     <div class="auth-or"><span>или по телефону</span></div>
                 </div>
+                <!-- Видна, только когда мы внутри Telegram, но авто-вход подавлен после «Выйти»
+                     (см. panti_skip_tg_autologin в auth.js) — обычный Login Widget тут не подходит,
+                     initData уже есть в самом Mini App. -->
+                <button id="auth-tg-return-btn" class="secondary-btn auth-btn hidden">Войти через Telegram</button>
                 <p class="auth-hint">Введите номер телефона. Подтверждение — звонком, код вводить не нужно.</p>
                 <input id="auth-phone" class="auth-input" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 999 123-45-67">
                 <button id="auth-start-btn" class="primary-btn auth-btn">Продолжить</button>
