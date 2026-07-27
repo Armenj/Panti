@@ -201,9 +201,20 @@
 
     // Тап по номеру для дозвона: пробуем открыть набор + копируем в буфер (фолбэк,
     // если tel: в Mini App не сработал — пользователь вставит вручную).
+    // Российский номер без "+" (например, при звонке через SMSC) неудобно копировать —
+    // приходится вручную дописывать +7 перед тем, как куда-то вставить/набрать. Всегда
+    // приводим к виду "+7 999 123-45-67" — и в подписи, и в том, что уходит в буфер обмена.
+    function formatRuPhoneDisplay(clean) {
+        const d = clean.replace(/\D/g, '');
+        if (d.length !== 11) return clean;
+        return `+7 ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9, 11)}`;
+    }
+
     function wireCallNumber(el, num) {
         if (!el) return;
-        const clean = String(num).replace(/[^\d+]/g, '');
+        let clean = String(num).replace(/[^\d+]/g, '');
+        if (!clean.startsWith('+')) clean = '+' + clean;
+        el.textContent = formatRuPhoneDisplay(clean);
         el.setAttribute('href', 'tel:' + clean);
         el.addEventListener('click', () => {
             try { if (navigator.clipboard) navigator.clipboard.writeText(clean); } catch (e) {}
@@ -212,7 +223,7 @@
                 if (tg && typeof tg.openLink === 'function') tg.openLink('tel:' + clean);
                 else window.location.href = 'tel:' + clean;
             } catch (e) {}
-            notify('Номер скопирован', 'success');
+            notify('Номер скопирован (+7…) — позвоните на него', 'success');
         });
     }
 
@@ -366,7 +377,7 @@
             if (callBox) callBox.classList.remove('hidden');
             const num = String(r.data.number);
             const link = $('auth-call-number');
-            if (link) { link.textContent = num; wireCallNumber(link, num); }
+            if (link) wireCallNumber(link, num);
             if (waitText) waitText.textContent = 'Ожидаем звонок…';
         }
         authStep('wait');
@@ -834,7 +845,7 @@
             } else {
                 const num = String(r.data.number);
                 const link = $('ml-call-number');
-                link.textContent = num; wireCallNumber(link, num);
+                wireCallNumber(link, num);
             }
             // поллинг подтверждения
             stopLinkPoll();
