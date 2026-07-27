@@ -331,21 +331,28 @@ io.on('connection', (socket) => {
 
             // Догоняем приглашения, отправленные пока юзер был офлайн (DM в Telegram) —
             // если он открыл приложение сам, а не по кнопке из сообщения, попап всё равно должен появиться.
+            let pendingCount = 0;
             for (const [inviteId, inv] of invites) {
                 if (inv.toUserId === u.id) {
+                    pendingCount++;
+                    console.log(`[invite] socket подключился userId=${u.id}, догоняем висящий invite ${inviteId} (room ${inv.roomId})`);
                     socket.emit('game-invite', {
                         inviteId, roomId: inv.roomId, fromName: inv.fromName || 'Игрок',
                         format: inv.format, targetScore: inv.targetScore, multi: inv.multi
                     });
                 }
             }
+            console.log(`[invite] connect: userId=${u.id}, всего активных invites=${invites.size}, из них для этого юзера=${pendingCount}`);
         } else if (token) {
             // Токен передан, но недействителен (аккаунт слит/удалён, сессия истекла).
             // Сокет остаётся анонимным → презенс не регистрируется. Просим клиент
             // перелогиниться и переподключиться с актуальным токеном.
+            console.log('[invite] connect: токен есть, но невалиден — auth-invalid');
             socket.emit('auth-invalid');
+        } else {
+            console.log('[invite] connect: без токена вообще (анонимный сокет)');
         }
-    } catch (e) { /* аноним — играет без статистики */ }
+    } catch (e) { console.log('[invite] connect: ошибка при авторизации сокета:', e.message); }
 
     // Создание новой игровой комнаты
     socket.on('create-room', (data) => {
